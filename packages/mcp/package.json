@@ -1,0 +1,25 @@
+{
+  "name": "@ratesspot/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for RatesSpot: lets an AI agent set up a business's listings, prices and payments, and manage its bookings, through the public API",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ratesspot-mcp": "src/server.ts"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  },
+  "exports": {
+    ".": "./src/tools.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "openapi-fetch": "0.17.0",
+    "zod": "4.6.7"
+  }
+}

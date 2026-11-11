@@ -1,0 +1,19 @@
+{
+  "name": "@ratesspot/sdk",
+  "version": "0.1.0",
+  "description": "Typed client for the RatesSpot booking API, and webhook signature verification",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  }
+}
