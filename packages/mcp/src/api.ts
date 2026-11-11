@@ -1,5 +1,5 @@
 import createClient from "openapi-fetch";
-import type { components, paths } from "./ratesspot-api";
+import type { components, paths } from "./ratesspot-api.js";
 
 export type Schemas = components["schemas"];
 export type Api = ReturnType<typeof createClient<paths>>;

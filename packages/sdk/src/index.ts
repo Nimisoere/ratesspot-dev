@@ -8,7 +8,7 @@
  *   const { data, error } = await rs.GET("/v1/resources");
  */
 import createClient, { type Client } from "openapi-fetch";
-import type { components, paths } from "./api";
+import type { components, paths } from "./api.js";
 
 export type { components, paths };
 /** A schema from the API description by name: Schema<"Booking">, Schema<"Quote">… */

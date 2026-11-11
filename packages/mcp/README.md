@@ -8,7 +8,15 @@ MIT licensed.
 
 **Easiest: the hosted server.** Add `https://api.ratesspot.com/mcp` as a custom connector in Claude (Settings → Connectors). You sign in to RatesSpot and choose a business; no API key to copy. The rest of this section runs it yourself with an API key.
 
-You need a RatesSpot **secret** API key for the business (dashboard → API keys → "Full access"). The key decides which business the agent works on.
+**Run it from npm** with a RatesSpot secret API key:
+
+```sh
+claude mcp add ratesspot --env RATESSPOT_API_KEY=rs_live_sk_… -- npx -y @ratesspot/mcp
+```
+
+Or in Claude Desktop's `claude_desktop_config.json`: `"command": "npx", "args": ["-y", "@ratesspot/mcp"], "env": { "RATESSPOT_API_KEY": "rs_live_sk_…" }`.
+
+To run it from a copy of the source instead: you need a RatesSpot **secret** API key for the business (dashboard → API keys → "Full access"). The key decides which business the agent works on.
 
 **Claude Code**
 
