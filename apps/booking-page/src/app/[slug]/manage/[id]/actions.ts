@@ -3,8 +3,11 @@
 import { redirect } from "next/navigation";
 import { client } from "@/lib/api";
 
-const back = (slug: string, id: string, token: string, extra: Record<string, string>) =>
+/** Back to the guest's page. The slug and id come from the form, so they're checked before going into a URL. */
+const back = (slug: string, id: string, token: string, extra: Record<string, string>) => {
+  if (!/^[a-z0-9-]{1,100}$/.test(slug) || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) redirect("/");
   redirect(`/${slug}/manage/${id}?${new URLSearchParams({ token, ...extra })}`);
+};
 
 export async function cancelBooking(form: FormData) {
   const slug = String(form.get("slug"));

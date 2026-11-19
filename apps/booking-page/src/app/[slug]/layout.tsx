@@ -2,14 +2,20 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { getStorefront } from "@/lib/api";
+import { indexable, publicBase } from "@/lib/seo";
 import { themeVars } from "@/lib/theme";
 
 export async function generateMetadata({ params }: LayoutProps<"/[slug]">): Promise<Metadata> {
-  const page = await getStorefront((await params).slug);
+  const { slug } = await params;
+  const page = await getStorefront(slug);
   return {
+    metadataBase: publicBase(),
     title: { default: `${page.merchant.name}: book online`, template: `%s · ${page.merchant.name}` },
     description: page.brand.about?.slice(0, 160) ?? `Book ${page.merchant.name} online.`,
-    ...(page.brand.cover ? { openGraph: { images: [page.brand.cover.url] } } : {}),
+    ...(publicBase() ? { alternates: { canonical: `/${slug}` } } : {}),
+    openGraph: { siteName: page.merchant.name, type: "website", ...(page.brand.cover ? { images: [page.brand.cover.url] } : {}) },
+    // Test businesses are a sandbox: never in search results.
+    ...(indexable(page) ? {} : { robots: { index: false, follow: false } }),
   };
 }
 
@@ -51,7 +57,7 @@ export default async function BusinessLayout({ children, params }: LayoutProps<"
           </ul>
           <ul>
             {brand.bookingTerms && <li><Link href={`/${slug}/terms`}>Booking terms</Link></li>}
-            <li className="powered">Bookings by RatesSpot</li>
+            <li className="powered">Bookings by <a href="https://www.ratesspot.com/" target="_blank" rel="noopener">RatesSpot</a> · <a href="https://www.ratesspot.com/privacy" target="_blank" rel="noreferrer">Privacy</a></li>
           </ul>
         </div>
       </footer>

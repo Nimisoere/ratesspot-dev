@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "MCP server for RatesSpot: lets an AI agent set up a business's listings, prices and payments, and manage its bookings, through the public API",
   "license": "MIT",
+  "mcpName": "io.github.Nimisoere/ratesspot",
   "type": "module",
   "bin": {
     "ratesspot-mcp": "src/server.ts"

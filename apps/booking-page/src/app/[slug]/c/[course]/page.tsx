@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCatalog, getStorefront } from "@/lib/api";
+import { courseLd, JsonLd, publicBase } from "@/lib/seo";
 import { dateTime, money, time } from "@/lib/format";
 
 async function find(slug: string, id: string) {
@@ -13,18 +14,25 @@ async function find(slug: string, id: string) {
 export async function generateMetadata({ params }: PageProps<"/[slug]/c/[course]">): Promise<Metadata> {
   const { slug, course } = await params;
   const c = await find(slug, course);
-  return { title: c.name, description: c.description?.slice(0, 160) ?? undefined };
+  return {
+    title: c.name,
+    description: c.description?.slice(0, 160) ?? undefined,
+    ...(publicBase() ? { alternates: { canonical: `/${slug}/c/${c.id}` } } : {}),
+    ...(c.images[0] ? { openGraph: { images: [c.images[0].url] } } : {}),
+  };
 }
 
 /** A course or event: dates, seats left, and a form to book seats. */
 export default async function CoursePage({ params }: PageProps<"/[slug]/c/[course]">) {
   const { slug, course } = await params;
-  const { merchant } = await getStorefront(slug);
+  const page = await getStorefront(slug);
+  const { merchant } = page;
   const c = await find(slug, course);
   const tz = merchant.timezone;
   const bookable = c.occurrences.length > 0 && c.seatsLeft > 0 && c.pricePerSeat !== null;
   return (
     <main className="wrap section">
+      {c.occurrences.length > 0 && <JsonLd data={courseLd(slug, page, c)} />}
       <p className="small"><Link href={`/${slug}`}>← All</Link></p>
       <div className="layout" style={{ marginTop: "1rem" }}>
         <div className="stack-lg">

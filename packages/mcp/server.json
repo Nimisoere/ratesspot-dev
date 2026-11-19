@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Nimisoere/ratesspot",
+  "title": "RatesSpot",
+  "description": "Booking engine for rooms, desks, sessions and courses: listings, rates, availability and bookings.",
+  "websiteUrl": "https://www.ratesspot.com",
+  "repository": {
+    "url": "https://github.com/Nimisoere/ratesspot-dev",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "version": "0.23.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@ratesspot/mcp",
+      "version": "0.23.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "RATESSPOT_API_KEY",
+          "description": "A RatesSpot secret API key (rs_test_sk_… for a test business)",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.ratesspot.com/mcp"
+    }
+  ]
+}

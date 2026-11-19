@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BookForm } from "@/components/BookForm";
 import { getCatalog, getStorefront } from "@/lib/api";
+import { JsonLd, listingLd, publicBase } from "@/lib/seo";
 
 async function find(slug: string, listing: string) {
   const { listings } = await getCatalog(slug);
@@ -13,17 +14,24 @@ async function find(slug: string, listing: string) {
 export async function generateMetadata({ params }: PageProps<"/[slug]/l/[listing]">): Promise<Metadata> {
   const { slug, listing } = await params;
   const l = await find(slug, listing);
-  return { title: l.name, description: l.tagline ?? l.description?.slice(0, 160) ?? undefined };
+  return {
+    title: l.name,
+    description: l.tagline ?? l.description?.slice(0, 160) ?? undefined,
+    ...(publicBase() ? { alternates: { canonical: `/${slug}/l/${l.slug}` } } : {}),
+    ...(l.images[0] ? { openGraph: { images: [l.images[0].url] } } : {}),
+  };
 }
 
 /** One listing: photos, description, features, and a booking form for each way it's sold. */
 export default async function ListingPage({ params }: PageProps<"/[slug]/l/[listing]">) {
   const { slug, listing } = await params;
-  const { merchant } = await getStorefront(slug);
+  const page = await getStorefront(slug);
+  const { merchant } = page;
   const l = await find(slug, listing);
   const rates = [...l.rates].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   return (
     <main className="wrap section">
+      <JsonLd data={listingLd(slug, page, l)} />
       <p className="small"><Link href={`/${slug}`}>← All</Link></p>
       <div className="layout" style={{ marginTop: "1rem" }}>
         <div className="stack-lg">

@@ -12,13 +12,15 @@
 ## Start
 
 1. Create a test business and get test API keys: [app.ratesspot.com/start](https://app.ratesspot.com/start).
-2. Read the docs: [ratesspot.com/docs](https://ratesspot.com/docs), and the API reference at [api.ratesspot.com/docs](https://api.ratesspot.com/docs) (generated from the [OpenAPI spec](https://api.ratesspot.com/openapi.json)).
+2. Read the docs: [ratesspot.com/docs](https://www.ratesspot.com/docs), and the API reference at [api.ratesspot.com/docs](https://api.ratesspot.com/docs) (generated from the [OpenAPI spec](https://api.ratesspot.com/openapi.json)).
 3. Clone this repo (Node 26):
 
    ```sh
    npm install
    npm run typecheck
    ```
+
+4. Run the booking page with `SITE_URL` set to its public address (e.g. `https://book.example.com`): it's used for payment return links, canonical links and sitemaps. `RATESSPOT_API_URL` defaults to `https://api.ratesspot.com`.
 
 ## Three ways to build
 

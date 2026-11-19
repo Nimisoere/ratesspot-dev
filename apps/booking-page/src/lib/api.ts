@@ -24,6 +24,17 @@ export const getStorefront = cache(async (slug: string): Promise<Storefront> => 
   return data;
 });
 
+/** The public directory: live businesses that chose to be listed. Empty if the API can't be reached, so the home page still renders. */
+export async function getDirectory(): Promise<Schema<"StorefrontDirectory">["data"]> {
+  try {
+    const rs = createRatesSpot({ apiKey: "none", baseUrl: baseUrl() });
+    const { data } = await rs.GET("/v1/storefronts");
+    return data?.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** The API, as this business's booking page: its publishable key can browse, quote, hold and pay, nothing more. */
 export const client = cache(async (slug: string): Promise<RatesSpot> => {
   const page = await getStorefront(slug);
