@@ -17,7 +17,8 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const server = createRatesSpotMcp({ baseUrl: process.env["RATESSPOT_API_URL"] ?? "https://api.ratesspot.com", apiKey });
+// Runs on the owner's own computer, so add_photo may read their image files.
+const server = createRatesSpotMcp({ baseUrl: process.env["RATESSPOT_API_URL"] ?? "https://api.ratesspot.com", apiKey }, { localFiles: true });
 await server.connect(new StdioServerTransport());
 // stdout carries the protocol, so anything for people goes to stderr.
 console.error("RatesSpot MCP server running on stdio.");

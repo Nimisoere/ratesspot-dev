@@ -402,7 +402,7 @@ export interface paths {
         put?: never;
         /**
          * Hold units or seats while the customer pays
-         * @description Reserves the units for the merchant's hold time (15 minutes by default). Pay `dueNow` within that time to confirm. Requires an Idempotency-Key header: retrying with the same key returns the same hold, never a second one.
+         * @description Reserves the units for the merchant's hold time (15 minutes by default). Pay `dueNow` within that time to confirm. Requires an Idempotency-Key header: retrying with the same key returns the same hold, never a second one, with `Idempotent-Replayed: true`.
          */
         post: operations["createHold"];
         delete?: never;
@@ -757,6 +757,67 @@ export interface paths {
          * @description Verified with the Stripe-Signature header and the business's webhook signing secret. No API key.
          */
         post: operations["stripeWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List and search customers, newest first
+         * @description Guests' personal data in bulk, so it needs the bookings:list scope. Erased customers are left out. Their bookings: `GET /v1/bookings?customerId=`.
+         */
+        get: operations["listCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/customers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One customer */
+        get: operations["getCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set or remove a customer's metadata
+         * @description For plugins: keep your own reference on the customer (e.g. your record's id) and keep the details themselves in your own store. Keys are merged; an empty string removes one. Sends `customer.updated`.
+         */
+        patch: operations["updateCustomer"];
+        trace?: never;
+    };
+    "/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Charges and refunds across bookings, newest first
+         * @description The payment record, for reports and accounting. Needs payments:read, which gives no access to guests' details. To keep a ledger up to date, listen for `payment.succeeded`, `refund.created` and `refund.sent` and use this to backfill.
+         */
+        get: operations["listPayments"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3086,6 +3147,61 @@ export interface components {
             provider: components["schemas"]["CardProvider"];
             reference: string;
         };
+        CustomerList: {
+            data: components["schemas"]["Customer"][];
+            nextCursor: string | null;
+        };
+        Customer: {
+            id: string;
+            name: string;
+            email: string | null;
+            phone: string | null;
+            metadata: components["schemas"]["Metadata"];
+            /** @description Bookings made, not counting holds that were never paid */
+            bookingCount: number;
+            /**
+             * @description Start of their latest booking, past or future
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            lastBookingStart: string | null;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            createdAt: string;
+        };
+        CustomerUpdate: {
+            metadata: components["schemas"]["Metadata"];
+        };
+        PaymentList: {
+            data: components["schemas"]["PaymentRecord"][];
+            nextCursor: string | null;
+        };
+        PaymentRecord: {
+            id: string;
+            bookingId: string;
+            /** @example C3C5Y96K */
+            bookingReference: string;
+            /** @enum {string} */
+            kind: "CHARGE" | "REFUND";
+            /** @enum {string} */
+            status: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+            /** @description paystack, stripe, manual, or how it was paid at the desk: cash, pos, bank_transfer */
+            provider: string;
+            /**
+             * @description Amount in minor units (kobo, cents)
+             * @example 4000000
+             */
+            amount: number;
+            currency: string;
+            /** @description Contracts: the instalment it paid */
+            instalmentSeq: number | null;
+            /**
+             * @description When it was recorded
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            createdAt: string;
+        };
         NotificationSettings: {
             /** @description Whether this server has an email provider (RESEND_API_KEY). */
             configured: boolean;
@@ -3210,6 +3326,7 @@ export interface components {
             units: {
                 id: string;
                 name: string;
+                metadata: components["schemas"]["Metadata"];
                 sortOrder: number;
                 active: boolean;
                 upcomingBookings: number;
@@ -3412,11 +3529,13 @@ export interface components {
         };
         UnitCreate: {
             name: string;
+            metadata?: components["schemas"]["Metadata"];
         };
         UnitUpdate: {
             name?: string;
             active?: boolean;
             sortOrder?: number;
+            metadata?: components["schemas"]["Metadata"];
         };
         RateCreate: {
             metadata?: components["schemas"]["Metadata"];
@@ -4141,15 +4260,18 @@ export interface components {
             url: string;
             description: string | null;
             /** @description Empty: every event */
-            events: components["schemas"]["EventType"][];
+            events: components["schemas"]["EventTypeName"][];
             enabled: boolean;
             /** @description Why RatesSpot switched it off, e.g. after failing for 3 days */
             disabledReason: string | null;
             /** @example 2026-12-08T10:00:00.000Z */
             createdAt: string;
         };
-        /** @enum {string} */
-        EventType: "hold.created" | "hold.expired" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed";
+        /**
+         * @description An event type. More are added over time; ignore ones you don't know.
+         * @example booking.confirmed
+         */
+        EventTypeName: string;
         WebhookEndpointCreate: {
             /**
              * Format: uri
@@ -4160,6 +4282,8 @@ export interface components {
             /** @description Which events to send. Omit or empty for all */
             events?: components["schemas"]["EventType"][];
         };
+        /** @enum {string} */
+        EventType: "hold.created" | "hold.expired" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
         WebhookEndpointUpdate: {
             /** Format: uri */
             url?: string;
@@ -6355,6 +6479,8 @@ export interface operations {
             /** @description The hold */
             201: {
                 headers: {
+                    /** @description true when this key was used before: the hold returned is the earlier one and nothing new was created */
+                    "Idempotent-Replayed": "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -7048,6 +7174,8 @@ export interface operations {
                 status?: string;
                 /** @description Guest name, email or phone, or a booking reference */
                 q?: string;
+                /** @description Only this customer's bookings (their history) */
+                customerId?: string;
                 /** @description Only bookings whose metadata has this key:value */
                 metadata?: string;
                 /** @description Bookings overlapping from this local date (inclusive) */
@@ -8018,6 +8146,364 @@ export interface operations {
             };
             /** @description Stripe isn't set up for this business */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCustomers: {
+        parameters: {
+            query?: {
+                /** @description Part of a name, email or phone number */
+                q?: string;
+                /** @description Only those whose metadata has this key:value */
+                metadata?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of customers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerList"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerUpdate"];
+            };
+        };
+        responses: {
+            /** @description The customer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPayments: {
+        parameters: {
+            query?: {
+                /** @description Recorded on or after this local date */
+                from?: string;
+                /** @description ...and before this local date (exclusive) */
+                to?: string;
+                kind?: "CHARGE" | "REFUND";
+                status?: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+                /** @description paystack, stripe, manual, cash, pos or bank_transfer */
+                provider?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of payments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentList"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

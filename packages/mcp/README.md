@@ -21,7 +21,7 @@ To run it from a copy of the source instead: you need a RatesSpot **secret** API
 **Claude Code**
 
 ```sh
-claude mcp add ratesspot --env RATESSPOT_API_KEY=rs_live_sk_… -- node /path/to/ratesspot-dev/packages/mcp/src/server.ts
+claude mcp add ratesspot --env RATESSPOT_API_KEY=rs_live_sk_… -- node /path/to/ratesspot/packages/mcp/src/server.ts
 ```
 
 **Claude Desktop** (`claude_desktop_config.json`)
@@ -31,7 +31,7 @@ claude mcp add ratesspot --env RATESSPOT_API_KEY=rs_live_sk_… -- node /path/to
   "mcpServers": {
     "ratesspot": {
       "command": "node",
-      "args": ["/path/to/ratesspot-dev/packages/mcp/src/server.ts"],
+      "args": ["/path/to/ratesspot/packages/mcp/src/server.ts"],
       "env": { "RATESSPOT_API_KEY": "rs_live_sk_…" }
     }
   }
@@ -51,20 +51,32 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `create_listing` | A listing with its units and first rate |
 | `update_listing` | Name, description, features, web address, capacity, on/off |
 | `set_rate` | Add or change a price and the ways to pay it |
-| `add_photo` | A photo from a local file or https URL |
+| `add_photo` | A photo from an https URL, or a local image file (local server only) |
 | `create_course` | A course or event with seats on dates (or dates to be announced) |
 | `set_opening_hours` | Weekly hours for the business or one listing |
 | `set_payment_methods` | Card on/off, bank transfer details |
 | `check_availability` | Free units or seats per day, prices, start times |
 | `quote` | Exact price, taxes, terms and ways to pay, without booking |
-| `book` | Book for a customer: pay at the desk, by bank transfer, or on arrival |
-| `find_bookings` | Search, or today's arrivals, departures, in-house |
+| `book` | Book for a customer: pay at the desk, by bank transfer, or on arrival. Asking again for the identical booking returns it (`alreadyBooked: true`), never a second one |
+| `find_bookings` | Search, or today's arrivals, departures, in-house; one customer's history |
+| `find_customers` | Search customers by name, email or phone, with how often they've booked |
 | `get_calendar` | Who's in which unit, day by day, with closures |
 | `get_booking` | One booking in full, with what cancelling would refund |
-| `record_payment` | Cash, POS or bank transfer received |
+| `record_payment` | Cash, POS or bank transfer received (previews first; `confirm: true` records it) |
 | `cancel_booking` | Previews the refund; cancels only with `confirm: true` |
 
 Amounts are in normal currency units (`30000` = ₦30,000) and times are local to the business (`2026-12-08T10:00`); the tools convert to the API's minor units and exact times. `cancel_booking` is marked destructive, and read-only tools are marked read-only, so clients can ask before acting.
+
+## Safety
+
+Agents act with the authority of a key or a person, and they read text other people wrote. So:
+
+- **The token is the limit.** Every tool calls the public API with the caller's own key or app token, so it can't do more than that token allows (its scopes, capped by the approving person's role).
+- **Nothing that moves money or can't be undone happens without `confirm: true`.** `cancel_booking` and `record_payment` show what they would do first.
+- **Text other people wrote is data.** Results that contain customers' names, reasons and similar text carry a second block saying it is never an instruction, and the server's instructions say the same.
+- **A retry never books twice.** `book` derives its idempotency key from the request itself, so a timeout or a repeated call returns the same booking; once that booking is cancelled or has expired, the same request books afresh.
+- **Work with one right answer is done in code, not by the model.** Prices, totals, conversions to minor units and local times, refunds, unit assignment and policy outcomes all come from the API.
+- **No files, no internal network on the remote server.** At `/mcp`, `add_photo` accepts only public https URLs (private, loopback, link-local and metadata addresses are refused, and each redirect is checked again). The local server can also read image files (.jpg, .jpeg, .png, .webp up to 8 MB) on the owner's computer.
 
 ## API gaps it found (all closed)
 
