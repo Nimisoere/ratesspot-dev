@@ -60,6 +60,7 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `book` | Book for a customer: pay at the desk, by bank transfer, or on arrival. Asking again for the identical booking returns it (`alreadyBooked: true`), never a second one |
 | `find_bookings` | Search, or today's arrivals, departures, in-house; one customer's history |
 | `find_customers` | Search customers by name, email or phone, with how often they've booked |
+| `get_occupancy` | How full a day is: units in use, closed and free per listing, arrivals, departures, open requests |
 | `get_calendar` | Who's in which unit, day by day, with closures |
 | `get_booking` | One booking in full, with what cancelling would refund |
 | `answer_request` | Approve or decline a booking request on a listing the business approves itself (previews first) |

@@ -543,6 +543,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/occupancy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How full a day is: units in use, closed and free, with arrivals, departures and open requests
+         * @description Counted for the business's local day, overall and per listing; units = inUse + closed + free. Counts only, no guests' details, so bookings:read is enough (for a reporting app as well as staff).
+         */
+        get: operations["getOccupancy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/calendar": {
         parameters: {
             query?: never;
@@ -3026,6 +3046,39 @@ export interface components {
         BookingList: {
             data: components["schemas"]["Booking"][];
             nextCursor: string | null;
+        };
+        Occupancy: {
+            /**
+             * @description ISO date in the merchant's timezone
+             * @example 2026-12-08
+             */
+            date: string;
+            /** @description Active units of active listings */
+            units: number;
+            /** @description Units a live booking (hold, request, confirmed, checked in) occupies at some point that day */
+            inUse: number;
+            /** @description Units not in use that a closure covers at some point that day */
+            closed: number;
+            /** @description Units free all day. units = inUse + closed + free */
+            free: number;
+            /** @description Bookings starting that day, as GET /v1/bookings?view=arrivals lists them (requests included) */
+            arrivals: number;
+            /** @description Bookings ending that day, as view=departures lists them */
+            departures: number;
+            /** @description Requests waiting for approval now, whatever their dates */
+            requests: number;
+            listings: {
+                id: string;
+                name: string;
+                /** @description Active units of active listings */
+                units: number;
+                /** @description Units a live booking (hold, request, confirmed, checked in) occupies at some point that day */
+                inUse: number;
+                /** @description Units not in use that a closure covers at some point that day */
+                closed: number;
+                /** @description Units free all day. units = inUse + closed + free */
+                free: number;
+            }[];
         };
         Calendar: {
             /**
@@ -7260,6 +7313,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookingList"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOccupancy: {
+        parameters: {
+            query?: {
+                /** @description Local date; defaults to today in the business's timezone */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The day's occupancy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Occupancy"];
                 };
             };
             /** @description The request is invalid */

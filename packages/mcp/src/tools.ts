@@ -633,6 +633,19 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
   );
 
   server.registerTool(
+    "get_occupancy",
+    {
+      title: "How full a day is",
+      description:
+        "For one day (default today, in the business's timezone): units in use, closed and free, overall and per listing, plus that day's arrivals and departures and the requests waiting for approval. " +
+        "Use it for 'how full are we on Friday?' rather than counting the calendar yourself.",
+      inputSchema: z.object({ date: LocalDate.optional() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) => run(async () => ok(api.GET("/v1/occupancy", { params: { query: input.date ? { date: input.date } : {} } }))),
+  );
+
+  server.registerTool(
     "get_calendar",
     {
       title: "Calendar",
