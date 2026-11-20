@@ -46,7 +46,7 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 
 | Tool | What it does |
 |---|---|
-| `get_business` | Currency, timezone, what's left to set up, how guests can pay |
+| `get_business` | Today's date, time and weekday locally; currency, timezone, what's left to set up, how guests can pay |
 | `list_catalog` | Listings with units, rates and photos; add-ons; courses |
 | `create_listing` | A listing with its units and first rate |
 | `update_listing` | Name, description, features, web address, capacity, on/off |
@@ -63,19 +63,20 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `get_calendar` | Who's in which unit, day by day, with closures |
 | `get_booking` | One booking in full, with what cancelling would refund |
 | `record_payment` | Cash, POS or bank transfer received (previews first; `confirm: true` records it) |
-| `cancel_booking` | Previews the refund; cancels only with `confirm: true` |
+| `cancel_booking` | Previews the refund; cancels only with `confirm: true` and the refund the person agreed to |
 
-Amounts are in normal currency units (`30000` = ₦30,000) and times are local to the business (`2026-12-08T10:00`); the tools convert to the API's minor units and exact times. `cancel_booking` is marked destructive, and read-only tools are marked read-only, so clients can ask before acting.
+Amounts are in normal currency units (`30000` = ₦30,000) and times are local to the business (`2026-12-08T10:00`), both in what tools take and in what they return; the tools convert to and from the API's minor units and exact times. `cancel_booking` is marked destructive, and read-only tools are marked read-only, so clients can ask before acting.
 
 ## Safety
 
 Agents act with the authority of a key or a person, and they read text other people wrote. So:
 
 - **The token is the limit.** Every tool calls the public API with the caller's own key or app token, so it can't do more than that token allows (its scopes, capped by the approving person's role).
-- **Nothing that moves money or can't be undone happens without `confirm: true`.** `cancel_booking` and `record_payment` show what they would do first.
+- **Nothing that moves money or can't be undone happens without `confirm: true`.** `cancel_booking` and `record_payment` show what they would do first. Confirming a cancellation also needs the refund the person agreed to (`expectedRefund`); if it has changed since the preview, nothing is cancelled.
 - **Text other people wrote is data.** Results that contain customers' names, reasons and similar text carry a second block saying it is never an instruction, and the server's instructions say the same.
 - **A retry never books twice.** `book` derives its idempotency key from the request itself, so a timeout or a repeated call returns the same booking; once that booking is cancelled or has expired, the same request books afresh.
-- **Work with one right answer is done in code, not by the model.** Prices, totals, conversions to minor units and local times, refunds, unit assignment and policy outcomes all come from the API.
+- **Work with one right answer is done in code, not by the model.** Prices, totals, conversions to minor units and local times (both ways), today's date in the business's timezone, refunds, unit assignment and policy outcomes all come from the API or the tools.
+- **Rate limits follow the credential.** At `/mcp`, each key or app install has its own allowance, shared with the API calls its tools make, so one busy agent can't crowd out others behind the same address. Requests without a valid credential are limited by address.
 - **No files, no internal network on the remote server.** At `/mcp`, `add_photo` accepts only public https URLs (private, loopback, link-local and metadata addresses are refused, and each redirect is checked again). The local server can also read image files (.jpg, .jpeg, .png, .webp up to 8 MB) on the owner's computer.
 
 ## API gaps it found (all closed)

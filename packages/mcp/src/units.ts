@@ -41,3 +41,24 @@ export function minuteOfDay(time: string): number {
 
 export const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * An instant as the business's wall-clock time, in the same shape tools take
+ * as input: "2026-12-08T09:00:00.000Z" in Africa/Lagos → "2026-12-08T10:00".
+ * So an agent never converts timezones itself.
+ */
+export function localTime(instant: string, timeZone: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(instant))
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts["year"]}-${parts["month"]}-${parts["day"]}T${parts["hour"]}:${parts["minute"]}`;
+}
+
+/** Today in the business's timezone: the date, the time and the weekday, for "tomorrow" or "next Friday". */
+export function localNow(timeZone: string, at: Date = new Date()): { date: string; time: string; weekday: Weekday } {
+  const [date, time] = localTime(at.toISOString(), timeZone).split("T") as [string, string];
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(at).toLowerCase() as Weekday;
+  return { date, time, weekday };
+}
