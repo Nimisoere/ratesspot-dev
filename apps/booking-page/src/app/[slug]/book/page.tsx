@@ -56,11 +56,14 @@ export default async function BookPage({ params, searchParams }: PageProps<"/[sl
     <main className="wrap section">
       <div className="layout">
         <div className="stack-lg">
-          <h1>Book {request.title}</h1>
+          <h1>{q.requiresApproval ? "Request" : "Book"} {request.title}</h1>
+          {q.requiresApproval && choices.length > 0 && (
+            <div className="notice">The business confirms these bookings itself. Send your request and we'll hold it while they answer; you'll pay once it's approved.</div>
+          )}
           {choices.length === 0 ? (
             <div className="notice warn">Online booking isn't available for this right now. Please get in touch using the details below.</div>
           ) : (
-            <BookingForm slug={slug} query={request.query} choices={choices} termsHref={brand.bookingTerms ? `/${slug}/terms` : null} />
+            <BookingForm slug={slug} query={request.query} choices={choices} termsHref={brand.bookingTerms ? `/${slug}/terms` : null} request={q.requiresApproval ?? false} />
           )}
         </div>
         <aside className="aside panel">

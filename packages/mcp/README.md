@@ -62,6 +62,7 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `find_customers` | Search customers by name, email or phone, with how often they've booked |
 | `get_calendar` | Who's in which unit, day by day, with closures |
 | `get_booking` | One booking in full, with what cancelling would refund |
+| `answer_request` | Approve or decline a booking request on a listing the business approves itself (previews first) |
 | `record_payment` | Cash, POS or bank transfer received (previews first; `confirm: true` records it) |
 | `cancel_booking` | Previews the refund; cancels only with `confirm: true` and the refund the person agreed to |
 

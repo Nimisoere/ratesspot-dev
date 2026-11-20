@@ -7,7 +7,7 @@ import { parseRequest } from "@/lib/request";
 
 export type ReserveState = { error: string } | null;
 
-/** Holds the booking in RatesSpot, then sends the guest to pay by card, or to their booking (transfer, on arrival). */
+/** Holds the booking in RatesSpot, then sends the guest to pay by card, or to their booking (transfer, on arrival, or a request the business approves first). */
 export async function reserve(_prev: ReserveState, form: FormData): Promise<ReserveState> {
   const get = (k: string) => String(form.get(k) ?? "").trim();
   const slug = get("slug");
@@ -46,7 +46,8 @@ export async function reserve(_prev: ReserveState, form: FormData): Promise<Rese
   if (!hold) return { error: error?.error.code === "insufficient_inventory" ? "Sorry, that was just booked. Go back and choose another time." : (error?.error.message ?? "We couldn't reserve that. Please try again.") };
 
   const manage = `/${slug}/manage/${hold.id}?token=${encodeURIComponent(hold.manageToken ?? "")}`;
-  if (paymentMethod !== "card") redirect(manage);
+  // A request (the business approves first) is paid after approval, from the guest's page.
+  if (paymentMethod !== "card" || hold.status === "PENDING_APPROVAL") redirect(manage);
 
   // Card: remember the guest's link for when the provider sends them back, then go and pay.
   (await cookies()).set(`rs_mt_${hold.id}`, hold.manageToken ?? "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: `/${slug}`, maxAge: 2 * 24 * 3600 });

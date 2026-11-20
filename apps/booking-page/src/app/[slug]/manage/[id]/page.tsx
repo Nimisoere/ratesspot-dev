@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCatalog, getManaged, getStorefront } from "@/lib/api";
 import { dateTime, money, STATUS, when } from "@/lib/format";
-import { cancelBooking, updatePhone } from "./actions";
+import { cancelBooking, payNow, updatePhone } from "./actions";
 
 export const metadata: Metadata = { title: "Your booking", robots: { index: false } };
 
@@ -27,6 +27,7 @@ export default async function ManageBooking({ params, searchParams }: PageProps<
   const { methods } = await getCatalog(slug);
   const awaitingTransfer = b.status === "HOLD" && b.paymentMethod === "bank_transfer";
   const awaitingCard = b.status === "HOLD" && b.paymentMethod === "card";
+  const awaitingApproval = b.status === "PENDING_APPROVAL";
   const notice = typeof q.notice === "string" ? q.notice : q.paid === "1" ? "Payment received. You're booked." : null;
   const problem = typeof q.error === "string" ? q.error : null;
 
@@ -36,7 +37,7 @@ export default async function ManageBooking({ params, searchParams }: PageProps<
         <div className="stack-lg">
           <div className="stack">
             <p><span className="pill">{STATUS[b.status] ?? b.status}</span></p>
-            <h1>{awaitingTransfer ? `Transfer ${money(b.dueNow, cur)} to confirm` : b.status === "CONFIRMED" ? "You're booked" : b.status === "CANCELLED" ? "Booking cancelled" : "Your booking"}</h1>
+            <h1>{awaitingApproval ? "Request sent" : awaitingTransfer ? `Transfer ${money(b.dueNow, cur)} to confirm` : b.status === "CONFIRMED" ? "You're booked" : b.status === "CANCELLED" ? "Booking cancelled" : "Your booking"}</h1>
             <p className="muted">Reference <strong>{b.reference}</strong></p>
           </div>
           {notice && <div className="notice ok" role="status">{notice}</div>}
@@ -58,7 +59,21 @@ export default async function ManageBooking({ params, searchParams }: PageProps<
               )}
             </div>
           )}
-          {awaitingCard && <div className="notice warn">This booking is waiting for payment. If you've paid, it updates within a minute.</div>}
+          {awaitingApproval && (
+            <div className="panel">
+              <p>{merchant.name} confirms these bookings itself. We're holding it for you while they answer{b.approvalExpiresAt ? <>, by <strong>{dateTime(b.approvalExpiresAt, tz)}</strong></> : null}.</p>
+              <p className="muted">Nothing has been charged. Once it's approved you'll be asked to pay {money(b.dueNow, cur)}{b.dueNow > 0 ? "" : " (nothing now)"}; if it isn't, it's released.</p>
+            </div>
+          )}
+          {awaitingCard && (
+            <form action={payNow} className="panel stack">
+              <input type="hidden" name="slug" value={slug} />
+              <input type="hidden" name="id" value={id} />
+              <input type="hidden" name="token" value={token} />
+              <p>This booking is waiting for payment{b.holdExpiresAt ? <>: pay by <strong>{dateTime(b.holdExpiresAt, tz)}</strong> to keep it</> : null}. If you've just paid, it updates within a minute.</p>
+              <button className="btn" type="submit">Pay {money(b.dueNow, cur)} now</button>
+            </form>
+          )}
 
           <div className="panel">
             <h3>{b.quantity > 1 ? `${b.quantity} × ${b.itemName}` : b.itemName}</h3>

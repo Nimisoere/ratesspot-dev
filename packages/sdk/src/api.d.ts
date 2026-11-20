@@ -623,6 +623,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bookings/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a booking that needs approval
+         * @description For rates with requiresApproval. Nothing due now (pay on arrival): it's confirmed. Otherwise it becomes a HOLD the guest pays to confirm, within the business's approval window. Sends booking.approved. Only a PENDING_APPROVAL booking that hasn't expired can be approved.
+         */
+        post: operations["approveBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bookings/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a booking that needs approval
+         * @description Cancels the request and frees its units; the reason goes in its history. Anything paid is refunded in full. Sends booking.declined.
+         */
+        post: operations["declineBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bookings/{id}/desk-payments": {
         parameters: {
             query?: never;
@@ -2428,6 +2468,8 @@ export interface components {
                 amount: number;
                 isDefault: boolean;
                 refundable: boolean;
+                /** @description Bookings are requests the business approves or declines: show "Request to book" */
+                requiresApproval: boolean;
                 minUnits: number;
                 maxUnits: number | null;
                 /**
@@ -2585,6 +2627,8 @@ export interface components {
             }[];
             policy: components["schemas"]["CancellationPolicy"];
             paymentOptions: components["schemas"]["PaymentOptionQuote"][];
+            /** @description Booking this makes a request the business approves or declines: say "Request to book", and the guest pays after approval */
+            requiresApproval?: boolean;
             securityDeposit?: {
                 /**
                  * @description Amount in minor units (kobo, cents)
@@ -2812,6 +2856,11 @@ export interface components {
              * @example 2026-12-08T10:00:00+01:00
              */
             holdExpiresAt: string | null;
+            /**
+             * @description PENDING_APPROVAL: when the request expires if the business hasn't answered
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            approvalExpiresAt: string | null;
             inArrears: boolean;
             quote: components["schemas"]["Quote"];
             instalments: {
@@ -3060,6 +3109,10 @@ export interface components {
              */
             balanceDue: number;
             paymentMethod: string | null;
+        };
+        DeclineRequest: {
+            /** @description Why, kept in the booking's history (and for a plugin that tells the guest) */
+            reason?: string;
         };
         DeskPaymentRequest: {
             /**
@@ -3344,6 +3397,7 @@ export interface components {
                 amount: number;
                 isDefault: boolean;
                 refundable: boolean;
+                requiresApproval: boolean;
                 active: boolean;
                 minUnits: number;
                 maxUnits: number | null;
@@ -3547,6 +3601,8 @@ export interface components {
             amount: number;
             isDefault?: boolean;
             refundable?: boolean;
+            /** @description Bookings on this rate are requests the business approves or declines (approveBooking, declineBooking). Default false */
+            requiresApproval?: boolean;
             active?: boolean;
             minUnits?: number;
             maxUnits?: number | null;
@@ -3608,6 +3664,8 @@ export interface components {
             amount?: number;
             isDefault?: boolean;
             refundable?: boolean;
+            /** @description Bookings on this rate are requests the business approves or declines (approveBooking, declineBooking). Default false */
+            requiresApproval?: boolean;
             active?: boolean;
             minUnits?: number;
             maxUnits?: number | null;
@@ -3868,6 +3926,8 @@ export interface components {
             metadata: components["schemas"]["Metadata"];
             template: string | null;
             holdMinutes: number;
+            /** @description Hours to answer a booking that needs approval, and then for the guest to pay */
+            approvalHours: number;
             hasBookings: boolean;
             vocabulary: components["schemas"]["VocabularyOverrides"];
             words: components["schemas"]["Vocabulary"] & unknown;
@@ -3891,6 +3951,8 @@ export interface components {
             template?: string | null;
             /** @description How long an unpaid online booking is held */
             holdMinutes?: number;
+            /** @description Hours the business has to answer a booking that needs approval (then the guest has the same to pay). Default 24 */
+            approvalHours?: number;
             vocabulary?: components["schemas"]["VocabularyOverrides"];
             /** @description Websites customers return to after paying online, e.g. https://www.example.com. Checkouts may only send customers to these, RatesSpot's own pages, or (test businesses) localhost */
             returnSites?: string[];
@@ -4283,7 +4345,7 @@ export interface components {
             events?: components["schemas"]["EventType"][];
         };
         /** @enum {string} */
-        EventType: "hold.created" | "hold.expired" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
+        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
         WebhookEndpointUpdate: {
             /** Format: uri */
             url?: string;
@@ -7535,6 +7597,180 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description The booking */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    approveBooking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The booking */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    declineBooking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeclineRequest"];
+            };
+        };
         responses: {
             /** @description The booking */
             200: {

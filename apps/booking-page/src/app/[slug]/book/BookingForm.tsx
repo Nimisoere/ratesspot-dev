@@ -13,7 +13,7 @@ export interface Choice {
 }
 
 /** Guest details and how they'll pay. The idempotency key makes a double-click or retry reuse the same hold. */
-export function BookingForm({ slug, query, choices, termsHref }: { slug: string; query: Record<string, string>; choices: Choice[]; termsHref: string | null }) {
+export function BookingForm({ slug, query, choices, termsHref, request = false }: { slug: string; query: Record<string, string>; choices: Choice[]; termsHref: string | null; request?: boolean }) {
   const [state, action, pending] = useActionState<ReserveState, FormData>(reserve, null);
   const [choice, setChoice] = useState(0);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -56,7 +56,7 @@ export function BookingForm({ slug, query, choices, termsHref }: { slug: string;
         </label>
       )}
       {state?.error && <div className="notice bad" role="alert">{state.error}</div>}
-      <button className="btn btn-block" type="submit" disabled={pending}>{pending ? "Reserving…" : chosen.method === "card" ? "Continue to payment" : "Confirm booking"}</button>
+      <button className="btn btn-block" type="submit" disabled={pending}>{pending ? "Reserving…" : request ? "Send request" : chosen.method === "card" ? "Continue to payment" : "Confirm booking"}</button>
     </form>
   );
 }
