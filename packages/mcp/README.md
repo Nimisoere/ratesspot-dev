@@ -65,6 +65,8 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `get_booking` | One booking in full, with what cancelling would refund |
 | `answer_request` | Approve or decline a booking request on a listing the business approves itself (previews first) |
 | `record_payment` | Cash, POS or bank transfer received (previews first; `confirm: true` records it) |
+| `change_booking` | Change dates, guests or rate: previews the new total, changes it with `confirm: true` and the agreed total |
+| `record_refund_given_back` | Record a refund staff gave back in cash, by transfer or POS (previews first) |
 | `cancel_booking` | Previews the refund; cancels only with `confirm: true` and the refund the person agreed to |
 
 Amounts are in normal currency units (`30000` = ₦30,000) and times are local to the business (`2026-12-08T10:00`), both in what tools take and in what they return; the tools convert to and from the API's minor units and exact times. `cancel_booking` is marked destructive, and read-only tools are marked read-only, so clients can ask before acting.

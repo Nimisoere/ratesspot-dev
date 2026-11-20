@@ -643,6 +643,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bookings/{id}/amendment-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What changing a booking's dates, guests, add-ons or rate would do
+         * @description Stores nothing. Booked nights keep their booked price, added ones are priced at today's rates (a different rate re-prices the whole stay). What's removed follows the booking's cancellation terms. Confirm with amendBooking and the newTotal shown.
+         */
+        post: operations["previewAmendment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bookings/{id}/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change a booking's dates, guests, add-ons or rate
+         * @description Confirmed bookings, and stays under way (extend only). Send the change with expectedTotal from previewAmendment; if the total is different now, nothing changes (409). Anything paid above the new total is refunded. Sends booking.changed.
+         */
+        post: operations["amendBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bookings/{id}/approve": {
         parameters: {
             query?: never;
@@ -878,6 +918,26 @@ export interface paths {
         get: operations["listPayments"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payments/{id}/give-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that a refund was given back by hand
+         * @description For refunds the business pays back itself: one taken at the desk (cash, transfer, POS), or a card refund the provider refused. On a booking these have toGiveBack: true. Recorded as refunded by the method used; sends refund.sent. A refund the provider is still sending can't be marked.
+         */
+        post: operations["markRefundGivenBack"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2644,9 +2704,19 @@ export interface components {
                  * @example 4000000
                  */
                 amount: number;
+                /**
+                 * @description Before tax is added (tax-exclusive businesses); equal to amount otherwise
+                 * @example 4000000
+                 */
+                net?: number;
             }[];
             policy: components["schemas"]["CancellationPolicy"];
             paymentOptions: components["schemas"]["PaymentOptionQuote"][];
+            /** @description The add-ons priced */
+            addOns?: {
+                addOnId: string;
+                quantity: number;
+            }[];
             /** @description Booking this makes a request the business approves or declines: say "Request to book", and the guest pays after approval */
             requiresApproval?: boolean;
             securityDeposit?: {
@@ -2841,6 +2911,8 @@ export interface components {
             resourceId: string | null;
             /** @description The session booked; null for resource bookings */
             sessionId: string | null;
+            /** @description The rate it was booked on (or changed to) */
+            rateId: string;
             status: components["schemas"]["BookingStatus"];
             /**
              * @description ISO date-time with offset
@@ -2933,6 +3005,8 @@ export interface components {
                  * @example 4000000
                  */
                 amount: number;
+                /** @description A refund staff must give back themselves (cash, transfer or POS taken at the desk, or a card refund the provider refused). Mark it with markRefundGivenBack */
+                toGiveBack: boolean;
                 /**
                  * @description ISO date-time with offset
                  * @example 2026-12-08T10:00:00+01:00
@@ -3163,6 +3237,77 @@ export interface components {
             balanceDue: number;
             paymentMethod: string | null;
         };
+        AmendmentPreview: {
+            /**
+             * @description Amount in minor units (kobo, cents)
+             * @example 4000000
+             */
+            currentTotal: number;
+            /**
+             * @description Including anything kept under the cancellation terms
+             * @example 4000000
+             */
+            newTotal: number;
+            /**
+             * @description Amount in minor units (kobo, cents)
+             * @example 4000000
+             */
+            difference: number;
+            /**
+             * @description What the booking's cancellation terms keep of the part removed
+             * @example 4000000
+             */
+            keptUnderTerms: number;
+            /**
+             * @description Amount in minor units (kobo, cents)
+             * @example 4000000
+             */
+            paid: number;
+            /**
+             * @description Still owed after the change
+             * @example 4000000
+             */
+            toPay: number;
+            /**
+             * @description Given back after the change
+             * @example 4000000
+             */
+            refund: number;
+            quote: components["schemas"]["Quote"];
+            units: {
+                unitId: string;
+                name: string;
+            }[];
+        };
+        AmendmentChange: {
+            range?: Omit<components["schemas"]["Range"], "kind"> & unknown;
+            adults?: number;
+            children?: number;
+            /** @description Replaces the add-ons. Omit to keep them */
+            addOns?: {
+                addOnId: string;
+                quantity: number;
+            }[];
+            /** @description Another rate of the same listing: the whole stay is priced at it */
+            rateId?: string;
+        };
+        AmendRequest: {
+            range?: Omit<components["schemas"]["Range"], "kind"> & unknown;
+            adults?: number;
+            children?: number;
+            /** @description Replaces the add-ons. Omit to keep them */
+            addOns?: {
+                addOnId: string;
+                quantity: number;
+            }[];
+            /** @description Another rate of the same listing: the whole stay is priced at it */
+            rateId?: string;
+            /**
+             * @description The newTotal the preview showed (and the person agreed to). If it's different now, nothing changes
+             * @example 4000000
+             */
+            expectedTotal: number;
+        };
         DeclineRequest: {
             /** @description Why, kept in the booking's history (and for a plugin that tells the guest) */
             reason?: string;
@@ -3307,6 +3452,13 @@ export interface components {
              * @example 2026-12-08T10:00:00+01:00
              */
             createdAt: string;
+        };
+        GiveBackRequest: {
+            /**
+             * @description How the money went back to the customer
+             * @enum {string}
+             */
+            method: "cash" | "bank_transfer" | "pos";
         };
         NotificationSettings: {
             /** @description Whether this server has an email provider (RESEND_API_KEY). */
@@ -4398,7 +4550,7 @@ export interface components {
             events?: components["schemas"]["EventType"][];
         };
         /** @enum {string} */
-        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
+        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.due" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
         WebhookEndpointUpdate: {
             /** Format: uri */
             url?: string;
@@ -7811,6 +7963,184 @@ export interface operations {
             };
         };
     };
+    previewAmendment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmendmentChange"];
+            };
+        };
+        responses: {
+            /** @description What the change would do */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmendmentPreview"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    amendBooking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmendRequest"];
+            };
+        };
+        responses: {
+            /** @description The booking, changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     approveBooking: {
         parameters: {
             query?: never;
@@ -8821,6 +9151,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentList"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    markRefundGivenBack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GiveBackRequest"];
+            };
+        };
+        responses: {
+            /** @description The booking, with the refund settled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
                 };
             };
             /** @description The request is invalid */
