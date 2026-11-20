@@ -73,3 +73,89 @@ export async function verifyWebhook(rawBody: string, signatureHeader: string | n
 
 /** A webhook body, once verified. `data.booking` is the booking as it was when the event happened. */
 export type WebhookEvent = Schema<"Event">;
+
+/**
+ * What a plugin page shown in the RatesSpot dashboard is told about who's looking
+ * (docs/plugin-runtime.md §3): the business, the staff member and their role, the
+ * place, and the booking for a booking panel.
+ */
+export interface AppContext {
+  v: 1;
+  iss: "ratesspot";
+  /** Your app's client id. */
+  aud: string;
+  merchantId: string;
+  /** staff:<user id> */
+  sub: string;
+  role: "OWNER" | "MANAGER" | "FRONT_DESK";
+  place: "page" | "booking_panel";
+  bookingId?: string;
+  /** Unix seconds. */
+  iat: number;
+  exp: number;
+  /** Unique per context: accept each once. */
+  jti: string;
+}
+
+const contextKeys = new Map<string, Promise<CryptoKey>>();
+
+function fromBase64url(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+}
+
+/**
+ * Checks the `ratesspot_context` your dashboard page was opened with. Returns the context,
+ * or null if it's forged, for another app, expired, or (with `seen`) already used.
+ * The signing key is fetched from the API once and cached.
+ *
+ *   const context = await verifyAppContext(url.searchParams.get("ratesspot_context"), { clientId: "rs_app_…" });
+ *   if (!context) return new Response("Open this from the RatesSpot dashboard.", { status: 401 });
+ *
+ * Then act with your own install token for `context.merchantId`, never trusting anything else in the URL.
+ */
+export async function verifyAppContext(
+  token: string | null | undefined,
+  options: {
+    clientId: string;
+    /** Defaults to the hosted API. */
+    baseUrl?: string;
+    /** Return true if this jti was used before; record it otherwise. Recommended: a context is good for one page load. */
+    seen?: (jti: string) => boolean | Promise<boolean>;
+    fetch?: (request: Request) => Promise<Response>;
+    now?: Date;
+  },
+): Promise<AppContext | null> {
+  if (!token) return null;
+  const [body, signature, extra] = token.split(".");
+  if (!body || !signature || extra !== undefined) return null;
+  const base = (options.baseUrl ?? "https://api.ratesspot.com").replace(/\/$/, "");
+  let key = contextKeys.get(base);
+  if (!key) {
+    key = (async () => {
+      const res = await (options.fetch ?? fetch)(new Request(`${base}/v1/app-context/key`));
+      if (!res.ok) throw new Error(`Couldn't fetch the RatesSpot app context key (${res.status}).`);
+      const jwk = (await res.json()) as { x: string };
+      return crypto.subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: jwk.x }, { name: "Ed25519" }, false, ["verify"]);
+    })();
+    contextKeys.set(base, key);
+    key.catch(() => contextKeys.delete(base));
+  }
+  let valid = false;
+  try {
+    valid = await crypto.subtle.verify({ name: "Ed25519" }, await key, fromBase64url(signature), new TextEncoder().encode(body));
+  } catch {
+    return null;
+  }
+  if (!valid) return null;
+  let context: AppContext;
+  try {
+    context = JSON.parse(new TextDecoder().decode(fromBase64url(body))) as AppContext;
+  } catch {
+    return null;
+  }
+  const now = Math.floor((options.now ?? new Date()).getTime() / 1000);
+  if (context.v !== 1 || context.iss !== "ratesspot" || context.aud !== options.clientId || typeof context.exp !== "number" || context.exp <= now) return null;
+  if (options.seen && (await options.seen(context.jti))) return null;
+  return context;
+}

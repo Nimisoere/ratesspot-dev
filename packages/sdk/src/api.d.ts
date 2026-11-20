@@ -2062,6 +2062,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Installed apps' places in the dashboard, for the signed-in person's role
+         * @description For the dashboard: each installed app's sidebar page and booking panels this person may see, pinned apps first (at most 4 pinned).
+         */
+        get: operations["listAppPlaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/pinned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Choose up to 4 installed apps for the dashboard's sidebar, in order */
+        put: operations["setPinnedApps"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{clientId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The address to show one of an app's places, with a signed context for the signed-in person
+         * @description For the dashboard. The address is the place's url with ?ratesspot_context=<token>: who (business, staff member, role), which place, the booking for a panel. Signed by RatesSpot (Ed25519, key at GET /v1/app-context/key), for this app only, valid 5 minutes. Refused unless the app is installed and the place is for this person's role.
+         */
+        post: operations["createAppContext"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/app-context/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The public key that app contexts are signed with
+         * @description An Ed25519 JWK. verifyAppContext in @ratesspot/sdk fetches and caches it. Public: no credential needed.
+         */
+        get: operations["getAppContextKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/developer/apps": {
         parameters: {
             query?: never;
@@ -2094,7 +2171,11 @@ export interface paths {
         delete: operations["deleteDeveloperApp"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change an app you registered: name, redirect URLs, website or places
+         * @description Places change at once for every business that installed it.
+         */
+        patch: operations["updateDeveloperApp"];
         trace?: never;
     };
     "/v1/webhook-endpoints": {
@@ -4506,6 +4587,60 @@ export interface components {
             installedAt: string;
             lastUsedAt: string | null;
         };
+        AppPlaceList: {
+            data: {
+                clientId: string;
+                name: string;
+                pinned: boolean;
+                places: (components["schemas"]["AppPlace"] & {
+                    roles: ("OWNER" | "MANAGER" | "FRONT_DESK")[];
+                })[];
+            }[];
+        };
+        AppPlace: {
+            /**
+             * @description page: one item in the dashboard's Apps sidebar group; booking_panel: a panel on each booking
+             * @enum {string}
+             */
+            kind: "page" | "booking_panel";
+            /**
+             * @description What staff see. Don't name a business: the same app serves many
+             * @example Reports
+             */
+            label: string;
+            /**
+             * @description Your page, shown in a sandboxed frame. https (http only to localhost). It gets ?ratesspot_context=…: check it with verifyAppContext
+             * @example https://reports.example.com/app
+             */
+            url: string;
+            /** @description Who sees it. Omit for everyone */
+            roles?: ("OWNER" | "MANAGER" | "FRONT_DESK")[];
+        };
+        PinnedApps: {
+            clientIds: string[];
+        };
+        AppContextLink: {
+            url: string;
+            expiresAt: string;
+        };
+        AppContextRequest: {
+            /** @enum {string} */
+            place: "page" | "booking_panel";
+            /** @description Required for booking_panel */
+            bookingId?: string;
+        };
+        AppContextKey: {
+            /** @enum {string} */
+            kty: "OKP";
+            /** @enum {string} */
+            crv: "Ed25519";
+            x: string;
+            kid: string;
+            /** @enum {string} */
+            use: "sig";
+            /** @enum {string} */
+            alg: "EdDSA";
+        };
         DeveloperApp: {
             /** @description The client_id */
             id: string;
@@ -4513,6 +4648,9 @@ export interface components {
             redirectUris: string[];
             website: string | null;
             public: boolean;
+            places: (components["schemas"]["AppPlace"] & {
+                roles: ("OWNER" | "MANAGER" | "FRONT_DESK")[];
+            })[];
             createdAt: string;
         };
         DeveloperAppCreate: {
@@ -4521,6 +4659,14 @@ export interface components {
             website?: string;
             /** @description No secret (mobile, desktop, CLI); PKCE only */
             public?: boolean;
+            /** @description Where the app appears in the dashboard of businesses that install it: at most one page and two booking panels */
+            places?: components["schemas"]["AppPlace"][];
+        };
+        DeveloperAppUpdate: {
+            name?: string;
+            redirectUris?: string[];
+            website?: string | null;
+            places?: components["schemas"]["AppPlace"][];
         };
         WebhookEndpoint: {
             id: string;
@@ -4550,7 +4696,7 @@ export interface components {
             events?: components["schemas"]["EventType"][];
         };
         /** @enum {string} */
-        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.due" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated";
+        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.due" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated" | "customer.erased" | "app.installed" | "app.uninstalled";
         WebhookEndpointUpdate: {
             /** Format: uri */
             url?: string;
@@ -15787,6 +15933,346 @@ export interface operations {
             };
         };
     };
+    listAppPlaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Places */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppPlaceList"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setPinnedApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinnedApps"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createAppContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppContextRequest"];
+            };
+        };
+        responses: {
+            /** @description Where to frame the place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppContextLink"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAppContextKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppContextKey"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listDeveloperApps: {
         parameters: {
             query?: never;
@@ -15979,6 +16465,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateDeveloperApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeveloperAppUpdate"];
+            };
+        };
+        responses: {
+            /** @description The app */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperApp"];
+                };
             };
             /** @description The request is invalid */
             400: {
