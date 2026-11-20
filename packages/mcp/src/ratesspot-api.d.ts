@@ -2172,8 +2172,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change an app you registered: name, redirect URLs, website or places
-         * @description Places change at once for every business that installed it.
+         * Change an app you registered: name, redirect URLs, website, places or webhook
+         * @description Places and the webhook change at once for every business that installed it. `webhook: null` removes the webhook. Setting the webhook again also switches back on any install's deliveries that had been switched off after failing.
          */
         patch: operations["updateDeveloperApp"];
         trace?: never;
@@ -4651,8 +4651,13 @@ export interface components {
             places: (components["schemas"]["AppPlace"] & {
                 roles: ("OWNER" | "MANAGER" | "FRONT_DESK")[];
             })[];
+            webhook: components["schemas"]["AppWebhookOut"];
             createdAt: string;
         };
+        AppWebhookOut: {
+            url: string;
+            events: string[];
+        } | null;
         DeveloperAppCreate: {
             name: string;
             redirectUris: string[];
@@ -4661,12 +4666,25 @@ export interface components {
             public?: boolean;
             /** @description Where the app appears in the dashboard of businesses that install it: at most one page and two booking panels */
             places?: components["schemas"]["AppPlace"][];
+            webhook?: components["schemas"]["AppWebhook"];
+        };
+        AppWebhook: {
+            /**
+             * @description Where to send events, from every business that installs the app. https, on a public address
+             * @example https://reports.example.com/hooks
+             */
+            url: string;
+            /** @description Event types to send. Omit or leave empty for every type the install's scopes cover. app.installed and app.uninstalled always come */
+            events?: string[];
         };
         DeveloperAppUpdate: {
             name?: string;
             redirectUris?: string[];
             website?: string | null;
             places?: components["schemas"]["AppPlace"][];
+            webhook?: components["schemas"]["AppWebhook"] | null;
+            /** @description Make a new webhook signing secret; the old one stops working at once */
+            rotateWebhookSecret?: boolean;
         };
         WebhookEndpoint: {
             id: string;
@@ -16380,6 +16398,8 @@ export interface operations {
                     "application/json": components["schemas"]["DeveloperApp"] & {
                         /** @description Shown once; null for public apps */
                         secret: string | null;
+                        /** @description The webhook signing secret (whsec_…), shown once: when a webhook is first set or its secret rotated. Otherwise null */
+                        webhookSecret: string | null;
                     };
                 };
             };
@@ -16552,7 +16572,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeveloperApp"];
+                    "application/json": components["schemas"]["DeveloperApp"] & {
+                        /** @description The webhook signing secret (whsec_…), shown once: when a webhook is first set or its secret rotated. Otherwise null */
+                        webhookSecret: string | null;
+                    };
                 };
             };
             /** @description The request is invalid */
