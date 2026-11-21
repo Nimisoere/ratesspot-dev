@@ -643,6 +643,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bookings/{id}/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a charge to a stay: minibar, laundry, a late checkout, damage
+         * @description Only on bookings checked in or completed (extras before arrival are add-ons: change the booking). It adds to the total and balance due, follows the business's tax setting, and is paid like any balance.
+         */
+        post: operations["addBookingCharge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bookings/{id}/charges/{chargeId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void a mistaken charge, with a reason
+         * @description The charge stays on the booking, marked void, and comes off the total. Anything paid above the new total is refunded (or is to give back, for money taken at the desk).
+         */
+        post: operations["voidBookingCharge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bookings/{id}/amendment-preview": {
         parameters: {
             query?: never;
@@ -951,11 +991,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Email settings */
+        /**
+         * Email settings
+         * @deprecated
+         * @description Deprecated, and RatesSpot sends no booking emails itself any more: they're sent by the Emails app, which businesses install like any app (GET /v1/business/setup gives its install link). This keeps working for businesses that haven't moved, and is removed in /v2.
+         */
         get: operations["getEmailSettings"];
         /**
          * Save email settings
-         * @description Confirmations, receipts and cancellation notices go to guests; staffEmail gets an alert for each online booking.
+         * @deprecated
+         * @description Confirmations, receipts and cancellation notices go to guests; staffEmail gets an alert for each online booking. RatesSpot no longer sends booking emails itself: enabled can only be false (409 otherwise). The Emails app uses this to switch the old setting off when it takes over. Deprecated, and RatesSpot sends no booking emails itself any more: they're sent by the Emails app, which businesses install like any app (GET /v1/business/setup gives its install link). This keeps working for businesses that haven't moved, and is removed in /v2.
          */
         put: operations["setEmailSettings"];
         post?: never;
@@ -976,7 +1021,8 @@ export interface paths {
         put?: never;
         /**
          * Send a test email now
-         * @description Checks the sending domain and provider. Uses the saved settings.
+         * @deprecated
+         * @description Checks the sending domain and provider. Uses the saved settings. Deprecated, and RatesSpot sends no booking emails itself any more: they're sent by the Emails app, which businesses install like any app (GET /v1/business/setup gives its install link). This keeps working for businesses that haven't moved, and is removed in /v2.
          */
         post: operations["sendTestEmail"];
         delete?: never;
@@ -992,7 +1038,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Recent emails and whether they were sent */
+        /**
+         * Recent emails and whether they were sent
+         * @deprecated
+         * @description Deprecated, and RatesSpot sends no booking emails itself any more: they're sent by the Emails app, which businesses install like any app (GET /v1/business/setup gives its install link). This keeps working for businesses that haven't moved, and is removed in /v2.
+         */
         get: operations["listEmails"];
         put?: never;
         post?: never;
@@ -1011,7 +1061,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a failed email again */
+        /**
+         * Send a failed email again
+         * @deprecated
+         * @description Deprecated, and RatesSpot sends no booking emails itself any more: they're sent by the Emails app, which businesses install like any app (GET /v1/business/setup gives its install link). This keeps working for businesses that haven't moved, and is removed in /v2.
+         */
         post: operations["retryEmail"];
         delete?: never;
         options?: never;
@@ -3094,6 +3148,8 @@ export interface components {
                  */
                 createdAt: string;
             }[];
+            /** @description Charges during or after the stay (minibar, laundry, damage), voided ones included. Active ones are in total */
+            charges: components["schemas"]["BookingCharge"][];
             history: {
                 from: string | null;
                 to: string;
@@ -3116,6 +3172,46 @@ export interface components {
         };
         /** @enum {string} */
         BookingStatus: "HOLD" | "PENDING_APPROVAL" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "NO_SHOW";
+        BookingCharge: {
+            id: string;
+            /** @example Minibar: soft drinks */
+            description: string;
+            quantity: number;
+            /**
+             * @description Amount in minor units (kobo, cents)
+             * @example 4000000
+             */
+            unitAmount: number;
+            /**
+             * @description quantity × unitAmount
+             * @example 4000000
+             */
+            amount: number;
+            /**
+             * @description The tax the charge contains (taxIncluded) or adds on top
+             * @example 4000000
+             */
+            tax: number;
+            taxIncluded: boolean;
+            /**
+             * @description What it adds to the booking's total
+             * @example 4000000
+             */
+            total: number;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            createdAt: string;
+            createdBy: string;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            voidedAt: string | null;
+            voidedBy: string | null;
+            voidReason: string | null;
+        };
         /**
          * @description Your own data: up to 50 keys (1–40 characters) with string values (up to 500). On updates, keys are merged; an empty string removes a key. RatesSpot never interprets it.
          * @example {
@@ -3317,6 +3413,21 @@ export interface components {
              */
             balanceDue: number;
             paymentMethod: string | null;
+        };
+        ChargeRequest: {
+            /** @example Minibar: soft drinks */
+            description: string;
+            /** @description Default 1 */
+            quantity?: number;
+            /**
+             * @description Each, in minor units. With prices that include tax, this includes it; otherwise tax is added
+             * @example 4000000
+             */
+            unitAmount: number;
+        };
+        VoidChargeRequest: {
+            /** @example Charged to the wrong room */
+            reason: string;
         };
         AmendmentPreview: {
             /**
@@ -4246,8 +4357,16 @@ export interface components {
         SetupChecklist: {
             catalog: boolean;
             payments: boolean;
+            /** @description Booking emails are set up: the Emails app is installed */
             emails: boolean;
             apiKey: boolean;
+            /** @description The app this server uses for booking emails, or null if it has none */
+            emailApp: {
+                clientId: string;
+                /** @description Send the owner here to install it (the usual consent screen) */
+                installUrl: string;
+                installed: boolean;
+            } | null;
         };
         ApiKey: {
             id: string;
@@ -8052,6 +8171,185 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description The booking */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addBookingCharge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargeRequest"];
+            };
+        };
+        responses: {
+            /** @description The booking, with the charge */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    voidBookingCharge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                chargeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidChargeRequest"];
+            };
+        };
         responses: {
             /** @description The booking */
             200: {
