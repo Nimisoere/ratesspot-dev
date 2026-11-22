@@ -50,3 +50,27 @@ export async function payNow(form: FormData) {
   if (!checkout) back(slug, id, token, { error: error?.error.message ?? "The payment page didn't open. Please try again." });
   redirect(checkout!.authorizationUrl);
 }
+
+/** The guest confirms a change at the total they saw (booking-model.md 5.3): changed now, or off to pay the difference first. */
+export async function confirmChange(form: FormData) {
+  const slug = String(form.get("slug"));
+  const id = String(form.get("id"));
+  const token = String(form.get("token"));
+  const range = String(form.get("kind")) === "days"
+    ? { kind: "days" as const, start: String(form.get("start")), days: Number(form.get("days")) }
+    : { kind: "nights" as const, checkIn: String(form.get("checkIn")), checkOut: String(form.get("checkOut")) };
+  const adults = Number(form.get("adults"));
+  const children = Number(form.get("children") ?? 0);
+  const rs = await client(slug);
+  const { data, error } = await rs.POST("/v1/manage/{bookingId}/change", {
+    params: { path: { bookingId: id } },
+    body: { token, range, adults, children, expectedTotal: Number(form.get("expectedTotal")), callbackUrl: `${siteUrl()}/${slug}/booking/complete` },
+  });
+  if (!data) back(slug, id, token, { error: error?.error.message ?? "That change didn't go through. Please try again." });
+  if (data!.changed) back(slug, id, token, { notice: "Your booking is changed." });
+  // Paying the difference first: come back to this page afterwards, and say it was for a change.
+  const jar = await cookies();
+  jar.set(`rs_mt_${id}`, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: `/${slug}`, maxAge: 2 * 24 * 3600 });
+  jar.set(`rs_chg_${id}`, "1", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: `/${slug}`, maxAge: 30 * 60 });
+  redirect(data!.checkout!.authorizationUrl);
+}

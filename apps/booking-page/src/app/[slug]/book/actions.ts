@@ -38,6 +38,7 @@ export async function reserve(_prev: ReserveState, form: FormData): Promise<Rese
       range: request.range,
       quantity: request.quantity,
       adults: request.adults,
+      ...(request.query["code"] ? { discountCode: request.query["code"].slice(0, 30) } : {}),
       paymentOption,
       paymentMethod,
       customer: { name, ...(email ? { email } : {}), ...(phone ? { phone } : {}) },

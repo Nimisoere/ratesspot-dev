@@ -2534,6 +2534,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discount-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discount codes, with how many bookings use each */
+        get: operations["listDiscountCodes"];
+        put?: never;
+        /**
+         * Create a discount code: a percentage or fixed amount off the price before tax
+         * @description Off nights, hours, days or seats and add-ons; never fees, deposits or charges. Optional limits: when it can be used, stay dates, minimum spend or nights, total uses, once per customer, specific listings.
+         */
+        post: operations["createDiscountCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discount-codes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change a discount code, or switch it off (active: false). Bookings that used it keep its terms */
+        patch: operations["updateDiscountCode"];
+        trace?: never;
+    };
     "/v1/auth/login/two-factor": {
         parameters: {
             query?: never;
@@ -2937,6 +2975,46 @@ export interface paths {
         put?: never;
         /** The guest cancels, if the business allows it; refunds follow the booking's terms */
         post: operations["cancelManagedBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/manage/{bookingId}/change-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What changing their dates or number of guests would cost, from the guest's manage link
+         * @description Public: authorised by the token. Only while the business allows guest changes and it's more than its hours before the start. payOnline: the difference will be paid by card first.
+         */
+        post: operations["previewManagedChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/manage/{bookingId}/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The guest changes their dates or number of guests, at the total they agreed to
+         * @description Changed at once when it costs the same or less, or the business doesn't take cards online (the difference is then owed). Otherwise answers with a card checkout for the difference, and the booking changes when it's paid; if it can no longer be made then, the payment is refunded in full.
+         */
+        post: operations["changeManagedBooking"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3406,6 +3484,7 @@ export interface components {
                 addOnId: string;
                 quantity: number;
             }[];
+            /** @description A discount code (case-insensitive). If it doesn't apply, the answer is 400 saying why */
             discountCode?: string;
         };
         /** @description How the customer chose time. Must match the rate's unit. */
@@ -3577,6 +3656,8 @@ export interface components {
             } | null;
             /** @example Studio Flat Deluxe */
             itemName: string;
+            /** @description The discount code used, if any */
+            discountCode: string | null;
             adults: number;
             children: number;
             /**
@@ -5517,6 +5598,73 @@ export interface components {
             access?: boolean;
             deletions?: boolean;
         };
+        DiscountCode: {
+            id: string;
+            code: string;
+            /** @enum {string} */
+            kind: "PERCENT" | "FIXED";
+            /** @description PERCENT: basis points (1000 = 10%). FIXED: minor units */
+            value: number;
+            description: string | null;
+            /** @description Minimum price before the discount, minor units */
+            minSpend: number | null;
+            /** @description Minimum nights or days */
+            minNights: number | null;
+            validFrom: string | null;
+            validUntil: string | null;
+            /** @description The stay must be inside these local dates (inclusive) */
+            stayFrom: string | null;
+            stayUntil: string | null;
+            maxUses: number | null;
+            /** @description Matched by the guest's email or phone */
+            oncePerCustomer: boolean;
+            /** @description Only these listings; empty: every listing and course */
+            resourceIds: string[];
+            active: boolean;
+            /** @description Bookings counting as uses now (not expired, or cancelled unpaid) */
+            uses: number;
+            createdAt: string;
+        };
+        DiscountCodeCreate: {
+            /** @description Letters, numbers, hyphens, underscores; case-insensitive */
+            code: string;
+            /** @enum {string} */
+            kind: "PERCENT" | "FIXED";
+            value: number;
+            description?: string | null;
+            minSpend?: number | null;
+            minNights?: number | null;
+            /** Format: date-time */
+            validFrom?: string | null;
+            /** Format: date-time */
+            validUntil?: string | null;
+            stayFrom?: string | null;
+            stayUntil?: string | null;
+            maxUses?: number | null;
+            oncePerCustomer?: boolean;
+            resourceIds?: string[];
+            active?: boolean;
+        };
+        DiscountCodeUpdate: {
+            /** @description Letters, numbers, hyphens, underscores; case-insensitive */
+            code?: string;
+            /** @enum {string} */
+            kind?: "PERCENT" | "FIXED";
+            value?: number;
+            description?: string | null;
+            minSpend?: number | null;
+            minNights?: number | null;
+            /** Format: date-time */
+            validFrom?: string | null;
+            /** Format: date-time */
+            validUntil?: string | null;
+            stayFrom?: string | null;
+            stayUntil?: string | null;
+            maxUses?: number | null;
+            oncePerCustomer?: boolean;
+            resourceIds?: string[];
+            active?: boolean;
+        };
         TwoFactorLogin: components["schemas"]["Login"] & {
             deviceToken: string | null;
         };
@@ -5680,6 +5828,10 @@ export interface components {
             storefrontEnabled: boolean;
             /** @description Guests may cancel from their manage link, under the booking's own terms */
             guestCanCancel: boolean;
+            /** @description Guests may change dates and number of guests from their manage link (booking-model.md 5.3) */
+            guestCanChange: boolean;
+            /** @description Up to this many hours before the booking starts */
+            guestChangeHours: number;
             /** @description Listed in the public directory of booking pages (shown only while live and published) */
             listedInDirectory: boolean;
         };
@@ -5702,6 +5854,8 @@ export interface components {
             };
             bookingTerms?: string | null;
             guestCanCancel?: boolean;
+            guestCanChange?: boolean;
+            guestChangeHours?: number;
             listedInDirectory?: boolean;
         };
         StorefrontRequest: {
@@ -5757,6 +5911,10 @@ export interface components {
                 penalty: number;
                 refund: number;
             } | null;
+            /** @description The business lets guests change dates and guests online, and there's still time */
+            canChange: boolean;
+            /** @description Until when the guest can change it online */
+            changeBy: string | null;
         };
         ManagedGuestUpdate: {
             /** @description From the guest's manage link */
@@ -5773,6 +5931,36 @@ export interface components {
             /** @description From the guest's manage link */
             token: string;
             reason?: string;
+        };
+        ManagedChangePreview: components["schemas"]["AmendmentPreview"] & {
+            payOnline: boolean;
+        };
+        ManagedChangePreviewRequest: {
+            /** @description From the guest's manage link */
+            token: string;
+            range?: Omit<components["schemas"]["Range"], "kind"> & unknown;
+            adults?: number;
+            children?: number;
+        };
+        ManagedChange: {
+            changed: boolean;
+            booking: components["schemas"]["Booking"] | null;
+            /** @description Pay this first; the booking changes when it's paid */
+            checkout: components["schemas"]["Checkout"] | null;
+        };
+        ManagedChangeRequest: {
+            /** @description From the guest's manage link */
+            token: string;
+            range?: Omit<components["schemas"]["Range"], "kind"> & unknown;
+            adults?: number;
+            children?: number;
+            /** @description The newTotal the preview showed */
+            expectedTotal: number;
+            /**
+             * Format: uri
+             * @description Where to send the guest after paying (needed when the difference is paid by card)
+             */
+            callbackUrl?: string;
         };
     };
     responses: never;
@@ -8502,6 +8690,8 @@ export interface operations {
                 q?: string;
                 /** @description Only this customer's bookings (their history) */
                 customerId?: string;
+                /** @description Only bookings that used this discount code */
+                discountCode?: string;
                 /** @description Only bookings whose metadata has this key:value */
                 metadata?: string;
                 /** @description Bookings overlapping from this local date (inclusive) */
@@ -19327,6 +19517,267 @@ export interface operations {
             };
         };
     };
+    listDiscountCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Codes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DiscountCode"][];
+                    };
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createDiscountCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscountCodeCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCode"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateDiscountCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscountCodeUpdate"];
+            };
+        };
+        responses: {
+            /** @description The code */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCode"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     completeTwoFactorLogin: {
         parameters: {
             query?: never;
@@ -21472,6 +21923,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManagedCancellation"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewManagedChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bookingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManagedChangePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description What it would cost */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedChangePreview"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changeManagedBooking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bookingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManagedChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed, or a checkout to pay first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedChange"];
                 };
             };
             /** @description The request is invalid */

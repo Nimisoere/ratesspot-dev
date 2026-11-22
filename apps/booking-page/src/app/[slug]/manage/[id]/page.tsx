@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCatalog, getManaged, getStorefront } from "@/lib/api";
-import { dateTime, money, STATUS, when } from "@/lib/format";
-import { cancelBooking, payNow, updatePhone } from "./actions";
+import { cookies } from "next/headers";
+import { client, getCatalog, getManaged, getStorefront } from "@/lib/api";
+import { dateTime, money, STATUS, today, when } from "@/lib/format";
+import { cancelBooking, confirmChange, payNow, updatePhone } from "./actions";
 
 export const metadata: Metadata = { title: "Your booking", robots: { index: false } };
 
@@ -21,14 +22,26 @@ export default async function ManageBooking({ params, searchParams }: PageProps<
       </main>
     );
   }
-  const { booking: b, canCancel, cancellation } = data;
+  const { booking: b, canCancel, cancellation, canChange, changeBy } = data;
   const tz = merchant.timezone;
   const cur = b.currency;
   const { methods } = await getCatalog(slug);
   const awaitingTransfer = b.status === "HOLD" && b.paymentMethod === "bank_transfer";
   const awaitingCard = b.status === "HOLD" && b.paymentMethod === "card";
   const awaitingApproval = b.status === "PENDING_APPROVAL";
-  const notice = typeof q.notice === "string" ? q.notice : q.paid === "1" ? "Payment received. You're booked." : null;
+  const notice = typeof q.notice === "string" ? q.notice : q.paid === "1" ? ((await cookies()).get(`rs_chg_${id}`) ? "Payment received. Your booking below is up to date: if the new dates had just been taken, it's unchanged and that payment is refunded." : "Payment received. You're booked.") : null;
+  // Changing dates or guests (booking-model.md 5.3): the rate says whether it's by the night or the day.
+  const rateUnit = canChange ? (await getCatalog(slug)).listings.flatMap((l) => l.rates).find((r) => r.id === b.rateId)?.unit : undefined;
+  const changeKind = rateUnit === "DAY" ? "days" : "nights";
+  const firstDay = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(b.start));
+  const lastDay = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(b.end));
+  const asked = q.change === "1" && canChange;
+  const askedRange = changeKind === "days"
+    ? { kind: "days" as const, start: typeof q.start === "string" ? q.start : firstDay, days: Number(q.days ?? Math.max(1, Math.round((Date.parse(lastDay) - Date.parse(firstDay)) / 86_400_000))) }
+    : { kind: "nights" as const, checkIn: typeof q.checkIn === "string" ? q.checkIn : firstDay, checkOut: typeof q.checkOut === "string" ? q.checkOut : lastDay };
+  const askedAdults = Number(q.adults ?? b.adults);
+  const askedChildren = Number(q.children ?? b.children);
+  const preview = asked ? await (await client(slug)).POST("/v1/manage/{bookingId}/change-preview", { params: { path: { bookingId: id } }, body: { token, range: askedRange, adults: askedAdults, children: askedChildren } }) : null;
   const problem = typeof q.error === "string" ? q.error : null;
 
   return (
@@ -84,6 +97,54 @@ export default async function ManageBooking({ params, searchParams }: PageProps<
               {b.balanceDue > 0 && b.status !== "CANCELLED" && <div className="total"><dt>Still to pay</dt><dd>{money(b.balanceDue, cur)}</dd></div>}
             </dl>
           </div>
+
+          {canChange && (
+            <div className="panel stack">
+              <h3>Change dates or guests</h3>
+              {changeBy && <p className="muted small">You can change this online until {dateTime(changeBy, tz)}.</p>}
+              <form method="get" className="stack">
+                <input type="hidden" name="token" value={token} />
+                <input type="hidden" name="change" value="1" />
+                <div className="row">
+                  {changeKind === "days" ? (
+                    <>
+                      <label>First day<input type="date" name="start" defaultValue={askedRange.kind === "days" ? askedRange.start : firstDay} min={today(tz)} required /></label>
+                      <label>Days<input type="number" name="days" min={1} max={60} defaultValue={askedRange.kind === "days" ? askedRange.days : 1} required /></label>
+                    </>
+                  ) : (
+                    <>
+                      <label>Check-in<input type="date" name="checkIn" defaultValue={askedRange.kind === "nights" ? askedRange.checkIn : firstDay} min={today(tz)} required /></label>
+                      <label>Check-out<input type="date" name="checkOut" defaultValue={askedRange.kind === "nights" ? askedRange.checkOut : lastDay} min={today(tz)} required /></label>
+                    </>
+                  )}
+                  <label>Adults<input type="number" name="adults" min={1} max={50} defaultValue={askedAdults} required /></label>
+                  <label>Children<input type="number" name="children" min={0} max={50} defaultValue={askedChildren} /></label>
+                </div>
+                <button className="btn btn-ghost" type="submit">See the new price</button>
+              </form>
+              {preview && !preview.data && <div className="notice bad">{preview.error?.error.message ?? "That change isn't possible."}</div>}
+              {preview?.data && (
+                <form action={confirmChange} className="stack">
+                  <input type="hidden" name="slug" value={slug} />
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="token" value={token} />
+                  <input type="hidden" name="kind" value={changeKind} />
+                  {askedRange.kind === "days" ? (<><input type="hidden" name="start" value={askedRange.start} /><input type="hidden" name="days" value={askedRange.days} /></>) : (<><input type="hidden" name="checkIn" value={askedRange.checkIn} /><input type="hidden" name="checkOut" value={askedRange.checkOut} /></>)}
+                  <input type="hidden" name="adults" value={askedAdults} />
+                  <input type="hidden" name="children" value={askedChildren} />
+                  <input type="hidden" name="expectedTotal" value={preview.data.newTotal} />
+                  <dl className="lines">
+                    <div><dt>New total</dt><dd>{money(preview.data.newTotal, cur)}</dd></div>
+                    {preview.data.keptUnderTerms > 0 && <div><dt>Kept under the cancellation terms</dt><dd>{money(preview.data.keptUnderTerms, cur)}</dd></div>}
+                    {preview.data.toPay > 0 && <div className="total"><dt>{preview.data.payOnline ? "To pay now by card" : "Still to pay"}</dt><dd>{money(preview.data.toPay, cur)}</dd></div>}
+                    {preview.data.refund > 0 && <div className="total"><dt>Refunded to you</dt><dd>{money(preview.data.refund, cur)}</dd></div>}
+                  </dl>
+                  <p className="muted small">{preview.data.payOnline ? "Your booking changes once the payment goes through. If the new dates are taken before then, it stays as it is and the payment is refunded." : preview.data.toPay > 0 ? "The difference is added to what's still to pay on your booking." : "This happens straight away."}</p>
+                  <button className="btn" type="submit">{preview.data.payOnline ? `Pay ${money(preview.data.toPay, cur)} and change` : "Confirm the change"}</button>
+                </form>
+              )}
+            </div>
+          )}
 
           {canCancel && cancellation && (
             <form action={cancelBooking} className="panel">

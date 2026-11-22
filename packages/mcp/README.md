@@ -53,10 +53,12 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `set_rate` | Add or change a price and the ways to pay it |
 | `add_photo` | A photo from an https URL, or a local image file (local server only) |
 | `create_course` | A course or event with seats on dates (or dates to be announced) |
+| `list_discount_codes` | Discount codes with their limits and how many bookings used each |
+| `create_discount_code` | A percentage or amount off, with optional limits; or switch one off |
 | `set_opening_hours` | Weekly hours for the business or one listing |
 | `set_payment_methods` | Card on/off, bank transfer details |
 | `check_availability` | Free units or seats per day, prices, start times |
-| `quote` | Exact price, taxes, terms and ways to pay, without booking |
+| `quote` | Exact price, taxes, terms and ways to pay, without booking (with a discount code, if the customer has one) |
 | `book` | Book for a customer: pay at the desk, by bank transfer, or on arrival. Asking again for the identical booking returns it (`alreadyBooked: true`), never a second one |
 | `find_bookings` | Search, or today's arrivals, departures, in-house; one customer's history |
 | `find_customers` | Search customers by name, email or phone, with how often they've booked |

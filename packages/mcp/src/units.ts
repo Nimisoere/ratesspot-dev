@@ -62,3 +62,13 @@ export function localNow(timeZone: string, at: Date = new Date()): { date: strin
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(at).toLowerCase() as Weekday;
   return { date, time, weekday };
 }
+
+/** The reverse of localTime: "2026-12-08T10:00" in the business's timezone → an exact instant (ISO, UTC). */
+export function toInstant(local: string, timeZone: string): string {
+  const asUtc = Date.parse(`${local}:00Z`);
+  const offset = (at: number) => Date.parse(`${localTime(new Date(at).toISOString(), timeZone)}:00Z`) - at;
+  // Two passes settle the offset even across a daylight-saving change.
+  let guess = asUtc - offset(asUtc);
+  guess = asUtc - offset(guess);
+  return new Date(guess).toISOString();
+}

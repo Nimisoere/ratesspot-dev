@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import * as z from "zod";
 import { createApi, RatesSpotError, type Connection, type Schemas } from "./api.ts";
-import { localNow, localTime, minuteOfDay, money, toMinor, WEEKDAYS } from "./units.ts";
+import { localNow, localTime, minuteOfDay, money, toInstant, toMinor, WEEKDAYS } from "./units.ts";
 
 /**
  * The RatesSpot MCP server. Tools are tasks a business owner would describe
@@ -121,6 +121,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       balanceDue: await show(b.balanceDue),
       dueNow: await show(b.dueNow),
       paymentMethod: b.paymentMethod,
+      ...(b.discountCode ? { discountCode: b.discountCode } : {}),
       holdExpiresAt: await localOrNull(b.holdExpiresAt),
       ...(b.status === "PENDING_APPROVAL" ? { answerBy: await localOrNull(b.approvalExpiresAt) } : {}),
       // Charges during the stay (minibar, laundry…): the ones not voided, with their id to void one.
@@ -492,6 +493,95 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       }),
   );
 
+  // ─── Discount codes ──────────────────────────────────────────────────────
+
+  async function codeView(d: Schemas["DiscountCode"]) {
+    const c = (await business()).currency;
+    return {
+      id: d.id,
+      code: d.code,
+      discount: d.kind === "PERCENT" ? `${d.value / 100}% off` : `${money(d.value, c)} off`,
+      description: d.description,
+      active: d.active,
+      uses: d.uses,
+      maxUses: d.maxUses,
+      minSpend: d.minSpend === null ? null : money(d.minSpend, c),
+      minNights: d.minNights,
+      usableFrom: await localOrNull(d.validFrom),
+      usableUntil: await localOrNull(d.validUntil),
+      staysFrom: d.stayFrom,
+      staysUntil: d.stayUntil,
+      oncePerCustomer: d.oncePerCustomer,
+      listingIds: d.resourceIds,
+    };
+  }
+
+  server.registerTool(
+    "list_discount_codes",
+    {
+      title: "List discount codes",
+      description: "The business's discount codes with their limits and how many bookings have used each. Pass a code to quote or book to apply it.",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    () => run(async () => Promise.all((await ok(api.GET("/v1/discount-codes"))).data.map(codeView))),
+  );
+
+  server.registerTool(
+    "create_discount_code",
+    {
+      title: "Create a discount code",
+      description:
+        "A code customers enter when booking: a percentage or an amount off the price before tax (nights, hours, days, seats and add-ons; never fees). " +
+        "Optional limits: usable dates, stay dates, minimum spend or nights, total uses, once per customer, specific listings. Set active: false (with codeId) to switch one off; bookings that used it keep their discount.",
+      inputSchema: z.object({
+        codeId: z.string().optional().describe("To switch an existing code on or off (from list_discount_codes); then only active is used"),
+        code: z.string().min(3).max(30).optional().describe("Letters, numbers, hyphens, underscores, e.g. WELCOME10"),
+        percentOff: z.number().gt(0).max(100).optional(),
+        amountOff: z.number().positive().optional().describe("In normal currency units"),
+        description: z.string().max(200).optional(),
+        minSpend: z.number().min(0).optional().describe("Price before the discount, normal currency units"),
+        minNights: z.number().int().min(1).max(365).optional(),
+        usableFrom: LocalDate.optional(),
+        usableUntil: LocalDate.optional().describe("Last day it can be entered (inclusive)"),
+        staysFrom: LocalDate.optional(),
+        staysUntil: LocalDate.optional().describe("The whole stay must be inside these dates"),
+        maxUses: z.number().int().min(1).optional(),
+        oncePerCustomer: z.boolean().optional(),
+        listingIds: z.array(z.string()).optional().describe("Only these listings; otherwise every listing and course"),
+        active: z.boolean().optional(),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        if (input.codeId) {
+          if (input.active === undefined) throw new Error("Give active: true or false to switch the code on or off; other changes are made in the dashboard.");
+          return codeView(await ok(api.PATCH("/v1/discount-codes/{id}", { params: { path: { id: input.codeId } }, body: { active: input.active } })));
+        }
+        if (!input.code) throw new Error("Give the code, e.g. WELCOME10.");
+        if ((input.percentOff === undefined) === (input.amountOff === undefined)) throw new Error("Give either percentOff or amountOff.");
+        const at = async (date: string | undefined, time: string) => (date ? toInstant(`${date}T${time}`, (await business()).timezone) : undefined);
+        const body: Schemas["DiscountCodeCreate"] = {
+          code: input.code,
+          kind: input.percentOff !== undefined ? "PERCENT" : "FIXED",
+          value: input.percentOff !== undefined ? Math.round(input.percentOff * 100) : await minor(input.amountOff!),
+          ...(input.description ? { description: input.description } : {}),
+          ...(input.minSpend !== undefined ? { minSpend: await minor(input.minSpend) } : {}),
+          ...(input.minNights ? { minNights: input.minNights } : {}),
+          ...(input.usableFrom ? { validFrom: await at(input.usableFrom, "00:00") } : {}),
+          ...(input.usableUntil ? { validUntil: await at(input.usableUntil, "23:59") } : {}),
+          ...(input.staysFrom ? { stayFrom: input.staysFrom } : {}),
+          ...(input.staysUntil ? { stayUntil: input.staysUntil } : {}),
+          ...(input.maxUses ? { maxUses: input.maxUses } : {}),
+          ...(input.oncePerCustomer !== undefined ? { oncePerCustomer: input.oncePerCustomer } : {}),
+          ...(input.listingIds ? { resourceIds: input.listingIds } : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        };
+        return codeView(await ok(api.POST("/v1/discount-codes", { body })));
+      }),
+  );
+
   // ─── Availability and bookings ───────────────────────────────────────────
 
   server.registerTool(
@@ -532,6 +622,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
         quantity: z.number().int().min(1).default(1).describe("Units or seats"),
         ...Guests,
         rateId: z.string().optional().describe("A specific rate; otherwise the listing's default for that kind of booking"),
+        discountCode: z.string().max(30).optional().describe("A discount code the customer gave (case doesn't matter); if it doesn't apply, the error says why"),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -539,7 +630,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       run(async () => {
         const q = await ok(
           api.POST("/v1/quotes", {
-            body: { ...target(input.listingId, input.courseId), range: await range(input.when, input.courseId), quantity: input.quantity, adults: input.adults, children: input.children, ...(input.rateId ? { rateId: input.rateId } : {}) },
+            body: { ...target(input.listingId, input.courseId), range: await range(input.when, input.courseId), quantity: input.quantity, adults: input.adults, children: input.children, ...(input.rateId ? { rateId: input.rateId } : {}), ...(input.discountCode ? { discountCode: input.discountCode } : {}) },
           }),
         );
         return {
@@ -573,6 +664,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
           .describe("Name plus an email or phone. Confirmation emails need an email"),
         payment: z.enum(["pay_at_desk", "bank_transfer", "on_arrival"]).describe("How the customer will pay"),
         rateId: z.string().optional(),
+        discountCode: z.string().max(30).optional().describe("A discount code the customer gave (case doesn't matter); if it doesn't apply, the error says why"),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
@@ -588,6 +680,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
           children: input.children,
           customer: input.customer,
           ...(input.rateId ? { rateId: input.rateId } : {}),
+          ...(input.discountCode ? { discountCode: input.discountCode } : {}),
           ...(input.payment === "on_arrival" ? { paymentOption: "ON_ARRIVAL" as const, paymentMethod: "on_arrival" as const } : {}),
           ...(input.payment === "bank_transfer" ? { paymentMethod: "bank_transfer" as const } : {}),
           ...(input.payment === "pay_at_desk" ? { paymentMethod: "desk" as const } : {}),
@@ -612,6 +705,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       inputSchema: z.object({
         search: z.string().optional().describe("Guest name, email, phone, or booking reference"),
         customerId: z.string().optional().describe("Only this customer's bookings (from find_customers): their history"),
+        discountCode: z.string().max(30).optional().describe("Only bookings that used this discount code"),
         view: z.enum(["arrivals", "departures", "in_house"]).optional(),
         date: LocalDate.optional().describe("For arrivals or departures; defaults to today"),
         from: LocalDate.optional().describe("Bookings overlapping from this date..."),
@@ -625,7 +719,7 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       run(async () => {
         const list = await ok(
           api.GET("/v1/bookings", {
-            params: { query: { limit: input.limit, ...(input.search ? { q: input.search } : {}), ...(input.customerId ? { customerId: input.customerId } : {}), ...(input.view ? { view: input.view } : {}), ...(input.date ? { date: input.date } : {}), ...(input.from ? { from: input.from } : {}), ...(input.to ? { to: input.to } : {}), ...(input.status ? { status: input.status.join(",") } : {}) } },
+            params: { query: { limit: input.limit, ...(input.search ? { q: input.search } : {}), ...(input.customerId ? { customerId: input.customerId } : {}), ...(input.discountCode ? { discountCode: input.discountCode } : {}), ...(input.view ? { view: input.view } : {}), ...(input.date ? { date: input.date } : {}), ...(input.from ? { from: input.from } : {}), ...(input.to ? { to: input.to } : {}), ...(input.status ? { status: input.status.join(",") } : {}) } },
           }),
         );
         return Promise.all(list.data.map(bookingView));
