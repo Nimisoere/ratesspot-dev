@@ -1693,7 +1693,10 @@ export interface paths {
         /** API keys (never the secret part) */
         get: operations["listApiKeys"];
         put?: never;
-        /** Create an API key; the key is shown once */
+        /**
+         * Create an API key; the key is shown once
+         * @description Apps (OAuth tokens) may ask only for website or browser keys, for a booking site they build, and an owner approves it first (202, docs/platform.md §5.6); the key then comes from getApprovalRequest, once. Full-access keys are for people and API keys only.
+         */
         post: operations["createApiKey"];
         delete?: never;
         options?: never;
@@ -3757,6 +3760,8 @@ export interface components {
                 status: number;
                 body?: unknown;
             } | null;
+            /** @description To the app that asked, once: a secret the run produced (a new API key). Gone after that, so keep it. */
+            secret?: string;
         };
         CancelRequest: {
             reason?: string;
@@ -14460,6 +14465,15 @@ export interface operations {
                         id: string;
                         key: string;
                     };
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */

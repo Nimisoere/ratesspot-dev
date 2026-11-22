@@ -950,6 +950,29 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
   );
 
   server.registerTool(
+    "create_website_key",
+    {
+      title: "Create a key for a booking website",
+      description:
+        "Make the API key a booking website needs. kind 'website': a server key (listings, availability, prices, holds, payments, reading a booking whose id it has). kind 'browser': a publishable key for web pages (the same, minus reading bookings). " +
+        "Neither can list bookings, see customers or change settings. Through the RatesSpot connector an owner approves it first (use check_approval; the key comes from there, once). The key is shown once: store it straight away.",
+      inputSchema: z.object({
+        name: z.string().min(1).max(60).describe("What it's for, e.g. 'Booking site'"),
+        kind: z.enum(["website", "browser"]).default("website"),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const made = await ok(api.POST("/v1/api-keys", { body: { name: input.name, purpose: input.kind } }));
+        const waiting = pendingApproval(made);
+        if (waiting) return { created: false, ...waiting, next: "An owner must approve this key in the RatesSpot dashboard. Once they have, check_approval gives you the key, once." };
+        const key = made as { id: string; key: string };
+        return { created: true, id: key.id, key: key.key, keyNote: "This is the only time the key is shown. Store it now (for example in the site's environment variables)." };
+      }),
+  );
+
+  server.registerTool(
     "check_approval",
     {
       title: "Check an approval",
@@ -966,6 +989,8 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
           ...(a.note ? { note: a.note } : {}),
           ...(a.decidedAt ? { decidedAt: await local(a.decidedAt) } : {}),
           ...(a.status === "approved" ? { done: "It was approved and has been done." } : a.status === "failed" ? { done: "It was approved, but RatesSpot refused it when it ran.", result: a.result } : a.status === "pending" ? { done: "Still waiting for a person." } : {}),
+          // A new API key: given once, here. Put it where the site needs it now (e.g. its environment variables).
+          ...(a.secret ? { key: a.secret, keyNote: "This is the only time the key is shown. Store it now (for example in the site's environment variables); don't paste it into chat logs." } : {}),
         };
       }, { thirdParty: true }),
   );

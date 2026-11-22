@@ -69,6 +69,8 @@ Then ask things like: *"Set up my guesthouse: three double rooms at ₦30,000 a 
 | `record_refund_given_back` | Record a refund staff gave back in cash, by transfer or POS (previews first) |
 | `add_charge` | Add something used during a stay (minibar, laundry, a late checkout) to a checked-in booking (previews first) |
 | `void_charge` | Remove a charge added by mistake, with a reason (previews first) |
+| `create_website_key` | Make the API key a booking website needs (website or browser kind; through the connector an owner approves it first) |
+| `check_approval` | Whether something waiting for approval was approved, declined or done (and a new key, once) |
 | `cancel_booking` | Previews the refund; cancels only with `confirm: true` and the refund the person agreed to |
 
 Amounts are in normal currency units (`30000` = ₦30,000) and times are local to the business (`2026-12-08T10:00`), both in what tools take and in what they return; the tools convert to and from the API's minor units and exact times. `cancel_booking` is marked destructive, and read-only tools are marked read-only, so clients can ask before acting.
@@ -87,11 +89,12 @@ Agents act with the authority of a key or a person, and they read text other peo
 
 ## API gaps it found (all closed)
 
-Building this is the test of whether an agent can run a business through the API alone. It found three gaps, now fixed in the API:
+Building this is the test of whether an agent can run a business through the API alone. It found four gaps, now fixed in the API:
 
 1. Every booking needed the customer's email. Now a name plus an email **or** a phone number is enough (card checkout still needs an email for the receipt).
 2. Hourly bookings needed exact times with an offset. The API now also takes local times (`2026-12-08T10:00`) in the business's timezone.
 3. Bookings couldn't be listed by date range. `GET /v1/bookings?from=&to=` now can, and `GET /v1/calendar` gives a whole unit-by-day view in one call.
+4. An agent couldn't make the key for a booking site it built. Apps can now ask for website or browser keys (never full access), and an owner approves it first (`create_website_key`).
 
 ## Develop
 
