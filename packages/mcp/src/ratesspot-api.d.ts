@@ -2456,6 +2456,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** High-risk actions apps asked for: all of this business's (staff), or your own (an app) */
+        get: operations["listApprovalRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One approval request: whether it's been decided, and what happened */
+        get: operations["getApprovalRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-requests/{id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve (it runs now, as the app) or decline an app's request
+         * @description Dashboard only. Money going out and deletions: owners and managers; payment settings and access: owners. Your role must also allow the action itself.
+         */
+        post: operations["decideApprovalRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/business/approval-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which high-risk actions by apps need a person's approval */
+        get: operations["getApprovalPolicy"];
+        /**
+         * Choose which high-risk actions by apps need a person's approval
+         * @description Owners, signed in to the dashboard: never an app or API key, so an app can't switch off its own approvals.
+         */
+        put: operations["setApprovalPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/login/two-factor": {
         parameters: {
             query?: never;
@@ -3641,6 +3716,47 @@ export interface components {
              * @example 4000000
              */
             refund: number;
+        };
+        /** @description Waiting for a person: an owner or manager approves it in the dashboard. Check GET /v1/approval-requests/{id}, or wait for approval.decided. */
+        ApprovalPending: {
+            approval: components["schemas"]["ApprovalRequest"];
+        };
+        ApprovalRequest: {
+            id: string;
+            /** @description The app that asked */
+            clientId: string;
+            appName: string | null;
+            /** @enum {string} */
+            category: "moneyOut" | "paymentSettings" | "access" | "deletions";
+            /** @description The API operation it will run, e.g. cancelBooking */
+            operationId: string;
+            /** @description What will happen, in words */
+            summary: string;
+            /** @description pending, approving (being run), approved, failed (ran, and the action was refused), declined or expired (after 7 days) */
+            status: string;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            createdAt: string;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            expiresAt: string;
+            /**
+             * @description ISO date-time with offset
+             * @example 2026-12-08T10:00:00+01:00
+             */
+            decidedAt: string | null;
+            decidedBy: string | null;
+            /** @description What the person deciding said */
+            note: string | null;
+            /** @description Once run: the HTTP status and response the app would have had */
+            result: {
+                status: number;
+                body?: unknown;
+            } | null;
         };
         CancelRequest: {
             reason?: string;
@@ -5379,6 +5495,23 @@ export interface components {
             bookingId?: string;
             roles?: ("OWNER" | "MANAGER" | "FRONT_DESK")[];
         };
+        ApprovalDecision: {
+            approve: boolean;
+            note?: string;
+        };
+        /** @description true: an app's request in this category waits for a person. All on unless switched off. */
+        ApprovalPolicy: {
+            moneyOut: boolean;
+            paymentSettings: boolean;
+            access: boolean;
+            deletions: boolean;
+        };
+        ApprovalPolicyUpdate: {
+            moneyOut?: boolean;
+            paymentSettings?: boolean;
+            access?: boolean;
+            deletions?: boolean;
+        };
         TwoFactorLogin: components["schemas"]["Login"] & {
             deviceToken: string | null;
         };
@@ -5462,7 +5595,7 @@ export interface components {
             events?: components["schemas"]["EventType"][];
         };
         /** @enum {string} */
-        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.due" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated" | "customer.erased" | "app.installed" | "app.uninstalled";
+        EventType: "hold.created" | "hold.expired" | "booking.approved" | "booking.declined" | "booking.confirmed" | "booking.changed" | "booking.cancelled" | "booking.checked_in" | "booking.completed" | "booking.no_show" | "payment.succeeded" | "payment.failed" | "refund.created" | "refund.sent" | "instalment.due" | "instalment.overdue" | "contract.terminated" | "availability.changed" | "catalog.changed" | "customer.updated" | "customer.erased" | "app.installed" | "app.uninstalled" | "approval.decided";
         WebhookEndpointUpdate: {
             /** Format: uri */
             url?: string;
@@ -8014,6 +8147,15 @@ export interface operations {
                     "application/json": components["schemas"]["Cancellation"];
                 };
             };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description The request is invalid */
             400: {
                 headers: {
@@ -9517,6 +9659,15 @@ export interface operations {
                     "application/json": components["schemas"]["PaymentProvider"];
                 };
             };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description The request is invalid */
             400: {
                 headers: {
@@ -9602,6 +9753,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentProvider"];
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */
@@ -10331,6 +10491,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Booking"];
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */
@@ -11203,6 +11372,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminResource"];
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */
@@ -13416,6 +13594,15 @@ export interface operations {
                     "application/json": components["schemas"]["PaymentSettings"];
                 };
             };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description The request is invalid */
             400: {
                 headers: {
@@ -13501,6 +13688,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentSettings"];
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */
@@ -14342,6 +14538,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description Revoked */
             204: {
                 headers: {
@@ -14597,6 +14802,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description Deleted */
             204: {
                 headers: {
@@ -16806,6 +17020,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description Uninstalled */
             204: {
                 headers: {
@@ -18658,6 +18881,438 @@ export interface operations {
             };
         };
     };
+    listApprovalRequests: {
+        parameters: {
+            query?: {
+                /** @description Only those still waiting */
+                pending?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"][];
+                    };
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApprovalRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequest"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    decideApprovalRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecision"];
+            };
+        };
+        responses: {
+            /** @description Decided (and, if approved, run) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequest"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPolicy"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalPolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPolicy"];
+                };
+            };
+            /** @description The request is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The API key lacks the scope this endpoint needs */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found, or belongs to another merchant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflicts with current state, e.g. no units free */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid request the booking rules refuse, e.g. outside opening hours */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     completeTwoFactorLogin: {
         parameters: {
             query?: never;
@@ -19421,6 +20076,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
+                };
+            };
             /** @description The request is invalid */
             400: {
                 headers: {
@@ -19591,6 +20255,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /** @description Waiting for a person's approval (apps and agents only): nothing has happened yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             /** @description The request is invalid */

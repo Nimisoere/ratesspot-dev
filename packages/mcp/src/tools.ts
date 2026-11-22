@@ -128,6 +128,21 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
     };
   }
 
+  /**
+   * High-risk actions (refunds, payment settings, webhooks, deletions) asked for by an app wait for a
+   * person in the dashboard (the API answers 202 with an approval request). Nothing has happened yet.
+   */
+  const pendingApproval = (data: unknown) => {
+    const approval = (data as { approval?: Schemas["ApprovalRequest"] } | null)?.approval;
+    if (!approval) return null;
+    return {
+      waitingForApproval: true,
+      approvalId: approval.id,
+      summary: approval.summary,
+      next: "Nothing has happened yet. An owner or manager must approve this in the RatesSpot dashboard (they've been notified). Tell the person, and check later with check_approval.",
+    };
+  };
+
   const LocalDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("YYYY-MM-DD");
   const Time = z.string().regex(/^\d{1,2}:\d{2}$/).describe("HH:mm, 24-hour, local time");
   const When = z
@@ -469,9 +484,11 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
     },
     (input) =>
       run(async () => {
-        if (input.card !== undefined) await ok(api.PUT("/v1/payment-settings/card", { body: { enabled: input.card } }));
-        if (input.bankTransfer) await ok(api.PUT("/v1/payment-settings/bank-transfer", { body: input.bankTransfer }));
-        return ok(api.GET("/v1/payment-methods"));
+        const waiting = [];
+        if (input.card !== undefined) waiting.push(pendingApproval(await ok(api.PUT("/v1/payment-settings/card", { body: { enabled: input.card } }))));
+        if (input.bankTransfer) waiting.push(pendingApproval(await ok(api.PUT("/v1/payment-settings/bank-transfer", { body: input.bankTransfer }))));
+        const approvals = waiting.filter((w) => w !== null);
+        return { ...(await ok(api.GET("/v1/payment-methods"))), ...(approvals.length ? { waitingForApproval: approvals } : {}) };
       }),
   );
 
@@ -886,7 +903,12 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
           return { recorded: false, wouldRecord: await Promise.all(owed.map(async (p) => ({ amount: await show(p.amount), givenBackBy: input.method }))), booking: { reference: booking.reference, customer: booking.customer?.name ?? null }, next: "Call again with confirm: true to record it." };
         }
         let latest = booking;
-        for (const p of owed) latest = await ok(api.POST("/v1/payments/{id}/give-back", { params: { path: { id: p.id } }, body: { method: input.method } }));
+        for (const p of owed) {
+          const done = await ok(api.POST("/v1/payments/{id}/give-back", { params: { path: { id: p.id } }, body: { method: input.method } }));
+          const waiting = pendingApproval(done);
+          if (waiting) return { recorded: false, ...waiting };
+          latest = done as Schemas["Booking"];
+        }
         return { recorded: true, given: await show(owed.reduce((n, p) => n + p.amount, 0)), booking: await bookingView(latest) };
       }, { thirdParty: true }),
   );
@@ -918,9 +940,33 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
         if (input.expectedRefund.trim() !== wouldRefund) {
           return { cancelled: false, refundChanged: true, agreedRefund: input.expectedRefund, wouldRefund, penalty: await show(preview.penalty), next: "The refund is different now. Check with the person, then confirm with the new amount." };
         }
-        const result = await ok(api.POST("/v1/bookings/{id}/cancel", { params: { path: { id: input.bookingId } }, body: input.reason ? { reason: input.reason } : {} }));
+        const done = await ok(api.POST("/v1/bookings/{id}/cancel", { params: { path: { id: input.bookingId } }, body: input.reason ? { reason: input.reason } : {} }));
+        const waiting = pendingApproval(done);
+        if (waiting) return { cancelled: false, ...waiting };
+        const result = done as Schemas["Cancellation"];
         const booking = await ok(api.GET("/v1/bookings/{id}", { params: { path: { id: input.bookingId } } }));
         return { cancelled: true, refund: await show(result.refund), penalty: await show(result.penalty), booking: await bookingView(booking) };
+      }, { thirdParty: true }),
+  );
+
+  server.registerTool(
+    "check_approval",
+    {
+      title: "Check an approval",
+      description: "Whether an owner or manager has approved or declined something that was waiting for approval (a refund, payment settings, a deletion), and what happened if it ran.",
+      inputSchema: z.object({ approvalId: z.string() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const a = await ok(api.GET("/v1/approval-requests/{id}", { params: { path: { id: input.approvalId } } }));
+        return {
+          status: a.status,
+          summary: a.summary,
+          ...(a.note ? { note: a.note } : {}),
+          ...(a.decidedAt ? { decidedAt: await local(a.decidedAt) } : {}),
+          ...(a.status === "approved" ? { done: "It was approved and has been done." } : a.status === "failed" ? { done: "It was approved, but RatesSpot refused it when it ran.", result: a.result } : a.status === "pending" ? { done: "Still waiting for a person." } : {}),
+        };
       }, { thirdParty: true }),
   );
 
