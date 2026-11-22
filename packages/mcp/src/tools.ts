@@ -123,6 +123,8 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
       paymentMethod: b.paymentMethod,
       holdExpiresAt: await localOrNull(b.holdExpiresAt),
       ...(b.status === "PENDING_APPROVAL" ? { answerBy: await localOrNull(b.approvalExpiresAt) } : {}),
+      // Charges during the stay (minibar, laundry…): the ones not voided, with their id to void one.
+      ...(b.charges.some((c) => !c.voidedAt) ? { charges: await Promise.all(b.charges.filter((c) => !c.voidedAt).map(async (c) => ({ id: c.id, description: c.description, quantity: c.quantity, total: await show(c.total) }))) } : {}),
     };
   }
 
@@ -755,6 +757,73 @@ export function createRatesSpotMcp(connection: Connection, options: McpOptions =
           };
         }
         return { recorded: true, booking: await bookingView(await ok(api.POST("/v1/bookings/{id}/desk-payments", { params: { path: { id: input.bookingId } }, body: { amount, method: input.method } }))) };
+      }, { thirdParty: true }),
+  );
+
+  server.registerTool(
+    "add_charge",
+    {
+      title: "Add a charge to a stay",
+      description:
+        "Add something used during a stay to the booking's bill: minibar, laundry, a late checkout, damage. Only for guests who are checked in or have left. " +
+        "It adds to what the booking costs (tax as the business has set it), so the guest owes it. Without confirm: true it only shows what would be added and the new balance, so you can check with the person first.",
+      inputSchema: z.object({
+        bookingId: z.string(),
+        description: z.string().min(1).max(200).describe("What it's for, as the guest will see it, e.g. 'Minibar: soft drinks'"),
+        amount: z.number().positive().describe("The price of one, in normal currency units"),
+        quantity: z.number().int().min(1).max(1000).default(1),
+        confirm: z.boolean().default(false).describe("Must be true to actually add it"),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const unitAmount = await minor(input.amount);
+        if (!input.confirm) {
+          const booking = await ok(api.GET("/v1/bookings/{id}", { params: { path: { id: input.bookingId } } }));
+          if (booking.status !== "CHECKED_IN" && booking.status !== "COMPLETED") throw new Error(`${booking.reference} isn't checked in (it's ${booking.status.toLowerCase().replace("_", " ")}). Charges are for stays under way or finished.`);
+          return {
+            added: false,
+            wouldAdd: { description: input.description, quantity: input.quantity, each: await show(unitAmount), amount: await show(unitAmount * input.quantity) },
+            booking: { reference: booking.reference, booked: booking.itemName, customer: booking.customer?.name ?? null, balanceDue: await show(booking.balanceDue) },
+            note: "Tax is applied as the business has set it, so the amount added may be a little more than this when prices exclude tax.",
+            next: "Call again with confirm: true to add it.",
+          };
+        }
+        return { added: true, booking: await bookingView(await ok(api.POST("/v1/bookings/{id}/charges", { params: { path: { id: input.bookingId } }, body: { description: input.description, quantity: input.quantity, unitAmount } }))) };
+      }, { thirdParty: true }),
+  );
+
+  server.registerTool(
+    "void_charge",
+    {
+      title: "Remove a charge from a stay",
+      description:
+        "Cancel a charge added by mistake (get its id from get_booking's charges). It's kept on record as voided, with the reason. Anything already paid above the new total is to be given back. " +
+        "Without confirm: true it only shows which charge would be removed.",
+      inputSchema: z.object({
+        bookingId: z.string(),
+        chargeId: z.string(),
+        reason: z.string().min(1).max(500).describe("Why, e.g. 'Charged to the wrong room'"),
+        confirm: z.boolean().default(false).describe("Must be true to actually remove it"),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        if (!input.confirm) {
+          const booking = await ok(api.GET("/v1/bookings/{id}", { params: { path: { id: input.bookingId } } }));
+          const charge = booking.charges.find((c) => c.id === input.chargeId);
+          if (!charge) throw new Error(`No charge ${input.chargeId} on ${booking.reference}. Use get_booking to see its charges.`);
+          if (charge.voidedAt) throw new Error("That charge was already removed.");
+          return {
+            removed: false,
+            wouldRemove: { description: charge.description, quantity: charge.quantity, total: await show(charge.total), reason: input.reason },
+            booking: { reference: booking.reference, customer: booking.customer?.name ?? null, balanceDue: await show(booking.balanceDue) },
+            next: "Call again with confirm: true to remove it.",
+          };
+        }
+        return { removed: true, booking: await bookingView(await ok(api.POST("/v1/bookings/{id}/charges/{chargeId}/void", { params: { path: { id: input.bookingId, chargeId: input.chargeId } }, body: { reason: input.reason } }))) };
       }, { thirdParty: true }),
   );
 
